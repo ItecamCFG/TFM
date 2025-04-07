@@ -19,7 +19,7 @@ El **Project Planning Problem** (PPP) propuesto aquí es una **variante** del Jo
 
 ## Estructura del Repositorio
 
-1. **`model_debug.py`**  
+1. **`model.py`**  
    Contiene la lógica de modelado y la definición de dos funciones principales de resolución:
    - `solve_scheduling_problem()` (usando [PuLP](https://github.com/coin-or/pulp) con CBC).
    - `solve_scheduling_problem_scip()` (usando [PySCIPOpt](https://github.com/scipopt/PySCIPOpt) con SCIP).  
