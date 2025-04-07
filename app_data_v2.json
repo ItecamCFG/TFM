@@ -1,0 +1,124 @@
+{
+    "projects": [
+        {
+            "id": "proj_d1b5337d",
+            "name": "Configurador de mesas fotovoltaicas",
+            "deadline": "2025-06-30"
+        },
+        {
+            "id": "proj_c301f3ac",
+            "name": "Clustering Datos Prilux",
+            "deadline": "2025-07-31"
+        }
+    ],
+    "tasks": [
+        {
+            "id": "task_35570710",
+            "project_id": "proj_d1b5337d",
+            "name": "Simulacion CFDS",
+            "hours": 30,
+            "expertise": "Junior",
+            "sequence": 1
+        },
+        {
+            "id": "task_9aed5430",
+            "project_id": "proj_d1b5337d",
+            "name": "Analisis datos",
+            "hours": 30,
+            "expertise": "Junior",
+            "sequence": 2
+        },
+        {
+            "id": "task_f5b24b85",
+            "project_id": "proj_d1b5337d",
+            "name": "Entrenamiento red neuronal",
+            "hours": 20,
+            "expertise": "Senior",
+            "sequence": 3
+        },
+        {
+            "id": "task_08af2b7e",
+            "project_id": "proj_d1b5337d",
+            "name": "Interfaz usuario",
+            "hours": 20,
+            "expertise": "Junior",
+            "sequence": 4
+        },
+        {
+            "id": "task_7b224c9c",
+            "project_id": "proj_c301f3ac",
+            "name": "Ingenieria datos",
+            "hours": 30,
+            "expertise": "Junior",
+            "sequence": 1
+        },
+        {
+            "id": "task_9b725734",
+            "project_id": "proj_c301f3ac",
+            "name": "Clustering y analisis resultados",
+            "hours": 30,
+            "expertise": "Senior",
+            "sequence": 2
+        },
+        {
+            "id": "task_fb1102e7",
+            "project_id": "proj_c301f3ac",
+            "name": "Desarrollo interfaz",
+            "hours": 25,
+            "expertise": "Junior",
+            "sequence": 3
+        }
+    ],
+    "resources": [
+        {
+            "name": "Carlos Becario",
+            "expertise": "Junior",
+            "cost": 30,
+            "Lunes": 8,
+            "Martes": 8,
+            "Miércoles": 8,
+            "Jueves": 8,
+            "Viernes": 8
+        },
+        {
+            "name": "Cristian Franco",
+            "expertise": "Senior",
+            "cost": 45,
+            "Lunes": 8,
+            "Martes": 8,
+            "Miércoles": 8,
+            "Jueves": 8,
+            "Viernes": 8
+        },
+        {
+            "name": "Emilio Arteaga",
+            "expertise": "Junior",
+            "cost": 30,
+            "Lunes": 8,
+            "Martes": 8,
+            "Miércoles": 8,
+            "Jueves": 8,
+            "Viernes": 8
+        },
+        {
+            "name": "Mario Calonge",
+            "expertise": "Senior",
+            "cost": 45,
+            "Lunes": 8,
+            "Martes": 8,
+            "Miércoles": 8,
+            "Jueves": 8,
+            "Viernes": 8
+        },
+        {
+            "name": "Sergio Jimenez",
+            "expertise": "Senior",
+            "cost": 45,
+            "Lunes": 8,
+            "Martes": 8,
+            "Miércoles": 8,
+            "Jueves": 8,
+            "Viernes": 8
+        }
+    ]
+}
