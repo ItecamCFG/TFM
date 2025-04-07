@@ -1,0 +1,3 @@
+pulp
+streamlit
+pyscipopt
