@@ -28,6 +28,7 @@ except ImportError:
         return 0, assignment # Coste y asignación dummy
 
 from data_manager import DAYS, EXPERTISE_LEVELS # Importar constantes
+
 DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"] # Nombres de días para la disponibilidad
 
 
@@ -35,7 +36,7 @@ def display_planning():
     """Función principal que maneja la UI de planificación"""
     st.header("📅 Planificación y Resultados")
     app_data = st.session_state.get('app_data', {})
-    
+
     # Verificar datos mínimos requeridos
     if not app_data.get('projects') or not app_data.get('tasks') or not app_data.get('resources'):
         st.warning("⚠️ Añade proyectos, tareas y recursos antes de planificar")
@@ -62,13 +63,13 @@ def display_planning():
         key="unique_execution_button",
         type="primary"
     )
-    
+
     if run_button:
         try:
             # Limpiar resultados anteriores
             if 'last_run_success' in st.session_state:
                 del st.session_state['last_run_success']
-            
+
             # Paso 1: Preparar datos
             with st.status("🔨 Preparando datos para el modelo...", expanded=True) as status:
                 model_data = prepare_solver_data(app_data)
@@ -80,19 +81,20 @@ def display_planning():
             # Paso 2: Ejecutar solver
             with st.spinner(f"🔍 Optimizando con {solver_choice.split(' ')[0]} (tiempo límite: 5 min)..."):
                 start_time = time.time()
-                
+
                 if solver_choice == "CBC (PuLP)":
-                    optimal_cost, assignment = solve_scheduling_problem(
-                    projects_list=model_data['projects_original_list'], # <-- Argumento correcto
-                    tasks_list=model_data['tasks_original_list'],       # <-- Argumento correcto
-                    resource_names_list=model_data['resources'],         # <-- Argumento correcto
-                    expertise_dict=model_data['expertise_levels'],     # <-- Argumento correcto
-                    cost_dict=model_data['costs'],                     # <-- Argumento correcto
-                    days_list=model_data['days'],                      # <-- Argumento correcto
-                    availability_numeric=model_data['availability'],     # <-- Argumento correcto
-                    start_date=model_data['start_date']                # <-- Argumento correcto
-                )
+                    optimal_makespan, assignment, task_completion_times = solve_scheduling_problem(
+                        projects_list=model_data['projects_original_list'],
+                        tasks_list=model_data['tasks_original_list'],
+                        resource_names_list=model_data['resources'],
+                        expertise_dict=model_data['expertise_levels'],
+                        cost_dict=model_data['costs'],
+                        days_list=model_data['days'],
+                        availability_numeric=model_data['availability'],
+                        start_date=model_data['start_date']
+                    )
                 elif solver_choice == "SCIP (PySCIPOpt)":
+                    # Esta parte la dejaremos para después, para mantener el foco en PuLP
                     optimal_cost, assignment = solve_scheduling_problem_scip(
                         model_data['projects'],
                         model_data['tasks_per_project'],
@@ -108,8 +110,9 @@ def display_planning():
                 # Guardar resultados en sesión
                 st.session_state.update({
                     'last_run_success': True,
-                    'optimal_cost': optimal_cost,
+                    'optimal_makespan': optimal_makespan, # Cambio aquí
                     'assignment': assignment,
+                    'task_completion_times': task_completion_times, # Cambio aquí
                     'model_metadata': {
                         'execution_time': round(time.time() - start_time, 2),
                         'solver_used': solver_choice,
@@ -120,34 +123,34 @@ def display_planning():
         except Exception as e:
             st.session_state['last_run_success'] = False
             st.error(f"❌ Error crítico durante la ejecución: {str(e)}")
-            st.error(traceback.format_exc())
+            st.error(traceback.format_exc())  # Imprime el traceback completo
 
-    # Mostrar resultados si existen
-    show_results()
+        # Mostrar resultados si existen
+        show_results()
 
 def prepare_solver_data(app_data):
-    """Prepara y valida los datos para el modelo v4."""
+    """Prepara y valida los datos para el modelo v5 (Makespan)."""
     # Inicializar diccionario de salida
     data = {
         'valid': False,
-        # --- Datos que SÍ necesita la función v4 ---
-        'projects_original_list': [], # Lista de dicts de proyecto original
-        'tasks_original_list': [],    # Lista de dicts de tarea original
+        # --- Datos que SÍ necesita la función v5 ---
+        'projects_original_list': [],  # Lista de dicts de proyecto original
+        'tasks_original_list': [],     # Lista de dicts de tarea original
         'resources': [],              # Lista de nombres de recursos
-        'expertise_levels': {},       # Dict {recurso: expertis}
-        'costs': {},                  # Dict {recurso: coste}
-        'days': [],                   # Lista de números de día [1, ..., N]
+        'expertise_levels': {},        # Dict {recurso: expertis}
+        'costs': {},                   # Dict {recurso: coste}
+        'days': [],                    # Lista de números de día [1, ..., N]
         'availability': {},           # Dict {(recurso, día_num): horas}
-        'start_date': None,           # Objeto date del día 1
+        'start_date': None,            # Objeto date del día 1
         # --- Datos adicionales (pueden ser útiles para debug o metadata) ---
         'planning_horizon': 0,
-        # --- Datos que NO necesita directamente la función v4 ---
-        # 'projects': [], # Lista de nombres (se obtiene de projects_original_list si es necesario)
+        # --- Datos que NO necesita directamente la función v5 ---
+        # 'projects': [],
         # 'tasks_per_project': {},
         # 'hours_required': {},
         # 'expertise_required': {},
     }
-    today = date.today() # <-- Obtener fecha de inicio
+    today = date.today()  # <-- Obtener fecha de inicio
     data['start_date'] = today
 
     try:
@@ -158,7 +161,7 @@ def prepare_solver_data(app_data):
         if not projects:
             raise ValueError("No hay proyectos definidos")
 
-        data['projects_original_list'] = projects # <-- GUARDAR LISTA ORIGINAL
+        data['projects_original_list'] = projects  # <-- GUARDAR LISTA ORIGINAL
         project_names = [p['name'] for p in projects]
         project_id_to_name = {p['id']: p['name'] for p in projects}
 
@@ -169,17 +172,18 @@ def prepare_solver_data(app_data):
         if not tasks:
             raise ValueError("No hay tareas definidas")
 
-        data['tasks_original_list'] = tasks # <-- GUARDAR LISTA ORIGINAL
+        data['tasks_original_list'] = tasks  # <-- GUARDAR LISTA ORIGINAL
 
         # Validar que todas las tareas pertenecen a proyectos conocidos
         for task in tasks:
-             if task.get('project_id') not in project_id_to_name:
-                  st.warning(f"Tarea '{task.get('name')}' tiene un ID de proyecto inválido: {task.get('project_id')}. Será ignorada.")
+            if task.get('project_id') not in project_id_to_name:
+                st.warning(
+                    f"Tarea '{task.get('name')}' tiene un ID de proyecto inválido: {task.get('project_id')}. Será ignorada.")
         # Filtrar tareas inválidas (opcional pero recomendado)
         tasks = [t for t in tasks if t.get('project_id') in project_id_to_name]
         if not tasks:
-             raise ValueError("No quedan tareas válidas tras filtrar.")
-        data['tasks_original_list'] = tasks # Guardar lista filtrada
+            raise ValueError("No quedan tareas válidas tras filtrar.")
+        data['tasks_original_list'] = tasks  # Guardar lista filtrada
 
         # =====================
         # 3. Recursos
@@ -189,7 +193,7 @@ def prepare_solver_data(app_data):
             raise ValueError("No hay recursos definidos")
 
         resource_names = [r['name'] for r in resources]
-        expertise_levels = {r['name']: r.get('expertise', "Junior") for r in resources} # Default a Junior
+        expertise_levels = {r['name']: r.get('expertise', "Junior") for r in resources}  # Default a Junior
         costs = {r['name']: r.get('cost', 0) for r in resources}
         availability_by_day_name = {
             r['name']: {day: r.get(day, 0) for day in DAYS}
@@ -211,30 +215,32 @@ def prepare_solver_data(app_data):
                 latest_deadline = max(deadlines)
 
         final_planning_date = latest_deadline + timedelta(days=5)
-        if final_planning_date <= today: final_planning_date = today + timedelta(days=20) # Mínimo 20 días
+        if final_planning_date <= today:
+            final_planning_date = today + timedelta(days=20)  # Mínimo 20 días
 
         planning_horizon = (final_planning_date - today).days + 1
-        if planning_horizon <= 0: planning_horizon = 30
+        if planning_horizon <= 0:
+            planning_horizon = 30
 
         days_list = list(range(1, planning_horizon + 1))
 
         data['days'] = days_list
-        data['planning_horizon'] = planning_horizon # Guardar para metadata
+        data['planning_horizon'] = planning_horizon  # Guardar para metadata
 
         # =====================
         # 5. Disponibilidad Numérica
         # =====================
         availability_numeric = {}
-        start_weekday = today.weekday() # 0=Lunes, 6=Domingo
+        start_weekday = today.weekday()  # 0=Lunes, 6=Domingo
 
         for r_name in resource_names:
             for d_num in days_list:
                 current_weekday = (start_weekday + d_num - 1) % 7
-                if 0 <= current_weekday < len(DAYS): # Lunes-Viernes
+                if 0 <= current_weekday < len(DAYS):  # Lunes-Viernes
                     day_name = DAYS[current_weekday]
                     hours = availability_by_day_name.get(r_name, {}).get(day_name, 0)
                     availability_numeric[(r_name, d_num)] = hours
-                else: # Sábado o Domingo
+                else:  # Sábado o Domingo
                     availability_numeric[(r_name, d_num)] = 0
 
         data['availability'] = availability_numeric
@@ -247,7 +253,7 @@ def prepare_solver_data(app_data):
     return data
 
 def show_results():
-    """Muestra los resultados de la planificación"""
+    """Muestra los resultados de la planificación (v5 - Makespan)."""
     if 'last_run_success' not in st.session_state:
         return
 
@@ -262,7 +268,11 @@ def show_results():
     metadata = st.session_state.get('model_metadata', {})
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Coste Total", f"{st.session_state.get('optimal_cost', 0):.2f}€")
+        optimal_makespan = st.session_state.get('optimal_makespan', None)
+        if optimal_makespan is not None:
+            st.metric("Makespan Óptimo", f"{optimal_makespan:.2f} días")  # Cambio aquí
+        else:
+            st.warning("No se pudo determinar el Makespan.")
     with col2:
         st.metric("Días Planificados", metadata.get('planning_horizon', 0))
     with col3:
@@ -283,7 +293,7 @@ def show_results():
             for (proj, task, resource, day), hours in assignment.items()
             if hours > 0.01  # Filtrar asignaciones mínimas
         ])
-        
+
         if not df.empty:
             st.dataframe(
                 df.sort_values(by=["Proyecto", "Día"]),
@@ -296,12 +306,12 @@ def show_results():
     # Diagrama de Gantt
     if not df.empty:
         st.subheader("📈 Diagrama de Gantt")
-        
+
         try:
             # Convertir días a fechas
             start_date = datetime.now().replace(hour=0, minute=0, second=0)
             df["Fecha Inicio"] = df["Día"].apply(
-                lambda d: start_date + timedelta(days=d-1)
+                lambda d: start_date + timedelta(days=d - 1)
             )
             df["Fecha Fin"] = df["Fecha Inicio"] + pd.to_timedelta(df["Horas"], unit='h')
 
@@ -332,7 +342,7 @@ def show_results():
                 height=600,
                 hovermode="x unified"
             )
-            
+
             st.plotly_chart(fig, use_container_width=True)
 
         except Exception as e:
