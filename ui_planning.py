@@ -95,22 +95,21 @@ def display_planning():
                     )
                 elif solver_choice == "SCIP (PySCIPOpt)":
                     # Esta parte la dejaremos para después, para mantener el foco en PuLP
-                    optimal_cost, assignment = solve_scheduling_problem_scip(
-                        model_data['projects'],
-                        model_data['tasks_per_project'],
-                        model_data['hours_required'],
-                        model_data['expertise_required'],
+                    optimal_cost, assignment, task_completion_times = solve_scheduling_problem_scip(
+                        model_data['projects_original_list'],
+                        model_data['tasks_original_list'],
                         model_data['resources'],
                         model_data['expertise_levels'],
                         model_data['costs'],
                         model_data['days'],
-                        model_data['availability']
+                        model_data['availability'],
+                        model_data['start_date']
                     )
 
                 # Guardar resultados en sesión
                 st.session_state.update({
                     'last_run_success': True,
-                    'optimal_makespan': optimal_makespan, # Cambio aquí
+                    'optimal_makespan': optimal_cost, # 
                     'assignment': assignment,
                     'task_completion_times': task_completion_times, # Cambio aquí
                     'model_metadata': {

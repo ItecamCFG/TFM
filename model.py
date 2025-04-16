@@ -223,128 +223,204 @@ def solve_scheduling_problem(
     return optimal_makespan, assignment, task_completion_days
 
 
-# --- Función con PySCIPOpt ---
-def solve_scheduling_problem_scip(projects, tasks, hours_required, expertise_required,
-                                  resources, expertise, cost, days, availability):
-    """Resuelve el problema usando PySCIPOpt (con correcciones)."""
-    print("DEBUG: Iniciando solve_scheduling_problem_scip") # <-- AÑADIDO (Debug)
-    print(f"DEBUG: Recibidos {len(days)} días. Ejemplo availability[({resources[0]},{days[0]})]: {availability.get((resources[0], days[0]), 'No encontrado')}") # <-- AÑADIDO (Debug)
+# --- Función con PySCIPOpt - v5.1 (Minimizar Makespan) ---
+def solve_scheduling_problem_scip(
+    projects_list,              # Lista de diccionarios de proyecto
+    tasks_list,                 # Lista de diccionarios de tarea
+    resource_names_list,        # Lista de nombres de recursos
+    expertise_dict,             # {recurso: expertis}
+    cost_dict,                  # {recurso: coste} - No usado en objetivo, pero pasado
+    days_list,                  # Lista de números de día [1, 2, ..., N]
+    availability_numeric,       # {(recurso, día_num): horas_disponibles}
+    start_date                  # Fecha de inicio (date object)
+):
+    """Resuelve el problema usando PySCIPOpt, minimizando makespan (v5.1)."""
+    print("DEBUG: Iniciando solve_scheduling_problem_scip - v5.1 (Min Makespan)")
+    print(f"DEBUG: Recibidos {len(days_list)} días desde {start_date}. Disponibilidad({resource_names_list[0]},{days_list[0]}): {availability_numeric.get((resource_names_list[0], days_list[0]), 'N/A')}")
 
+    # 1. Inicialización y Procesamiento de Datos
     level_map = {"Junior": 1, "Senior": 2, "Experto": 3}
-    model = Model("ProjectSchedulingSCIP")
+    model = Model("ProjectSchedulingSCIP_Makespan")
 
-    # 1) VARIABLES (igual, M=8)
-    x, y, z = {}, {}, {}
-    M = 8 # <-- MODIFICADO
-    for p in projects:
-        for t in tasks[p]:
-            for r in resources:
+    # Mapeos y estructuras (similar a la función PuLP v5.1)
+    project_names = [p['name'] for p in projects_list]
+    project_id_to_name = {p['id']: p['name'] for p in projects_list}
+    hours_required_dict = {}
+    expertise_required_dict = {}
+    tasks_per_project_name = {p_name: [] for p_name in project_names}
+    task_info = {}
+
+    for task in tasks_list:
+        proj_id = task['project_id']
+        proj_name = project_id_to_name.get(proj_id)
+        if proj_name:
+            task_name = task['name']
+            task_key = (proj_name, task_name)
+            if task_name not in tasks_per_project_name[proj_name]:
+                tasks_per_project_name[proj_name].append(task_name)
+                hours_required_dict[task_key] = task.get('hours', 0)
+                expertise_required_dict[task_key] = task.get('expertise', "Junior")
+                task_info[task_key] = task
+
+    # 2. Variables
+    x = {}  # assign (Binary)
+    y = {}  # hours (Continuous)
+    work_day = {} # WorkDay (Binary, similar a z)
+    end_day = {}  # EndDay (Integer)
+    M_daily = 8 # BigM para horas diarias
+    M_days = len(days_list) + 1 # BigM para días
+
+    for p in project_names:
+        for t in tasks_per_project_name[p]:
+            # Variable EndDay
+            end_day[(p, t)] = model.addVar(lb=1, vtype="I", name=f"EndDay_{p}_{t}")
+            for r in resource_names_list:
+                # Variable Asignación
                 x[(p, t, r)] = model.addVar(vtype="B", name=f"x_{p}_{t}_{r}")
-                for d in days:
-                    y[(p, t, r, d)] = model.addVar(lb=0, ub=M, vtype="C", name=f"y_{p}_{t}_{r}_{d}")
-            for d in days:
-                 z[(p, t, d)] = model.addVar(vtype="B", name=f"z_{p}_{t}_{d}")
+                # Variable Horas
+                for d in days_list:
+                    y[(p, t, r, d)] = model.addVar(lb=0, ub=M_daily, vtype="C", name=f"y_{p}_{t}_{r}_{d}")
+            # Variable WorkDay
+            for d in days_list:
+                work_day[(p, t, d)] = model.addVar(vtype="B", name=f"WorkDay_{p}_{t}_{d}")
 
+    # Variable Makespan
+    makespan = model.addVar(lb=1, vtype="I", name="Makespan")
 
-    # 2) FUNCIÓN OBJETIVO (igual)
-    max_cost_per_hour = max(cost.values()) if cost else 0
-    total_hours = sum(hours_required.values()) if hours_required else 0
-    max_possible_cost = max_cost_per_hour * total_hours if total_hours > 0 else 1000
-    factor_penalizacion = max_possible_cost * 1.1 if max_possible_cost > 0 else 10000
-    objective = quicksum(cost[r] * y[(p, t, r, d)] for p in projects for t in tasks[p] for r in resources for d in days) + \
-                factor_penalizacion * quicksum(z[(p, t, d)] for p in projects for t in tasks[p] for d in days)
-    model.setObjective(objective, "minimize")
+    # 3. Función Objetivo: Minimizar Makespan
+    model.setObjective(makespan, "minimize")
 
-    # 3) RESTRICCIONES
-    # (a) Asignación única (igual)
-    for p in projects:
-        for t in tasks[p]:
-            model.addCons(quicksum(x[(p, t, r)] for r in resources) == 1, name=f"task_assigned_{p}_{t}")
+    # 4. Restricciones
 
-    # (b) Expertise (igual)
-    for p in projects:
-        for t in tasks[p]:
-            required_expertise_level = level_map[expertise_required[(p, t)]]
-            for r in resources:
-                if level_map[expertise[r]] < required_expertise_level:
+    # --- 4.1 Asignación única, Expertise, Horas Totales, Link y-x ---
+    print("DEBUG SCIP: Añadiendo restricciones básicas...")
+    for p in project_names:
+        for t in tasks_per_project_name[p]:
+            task_key = (p, t)
+            H_pt = hours_required_dict.get(task_key, 0)
+
+            model.addCons(quicksum(x[(p, t, r)] for r in resource_names_list) == 1, name=f"assign_one_res_{p}_{t}")
+
+            required_expertise_level = level_map.get(expertise_required_dict.get(task_key, "Junior"), 1)
+            for r in resource_names_list:
+                resource_expertise_level = level_map.get(expertise_dict.get(r, "Junior"), 1)
+                if resource_expertise_level < required_expertise_level:
                     model.addCons(x[(p, t, r)] == 0, name=f"expertise_{p}_{t}_{r}")
 
-    # (c) Horas requeridas totales (igual)
-    for p in projects:
-        for t in tasks[p]:
-            model.addCons(quicksum(y[(p, t, r, d)] for r in resources for d in days) == hours_required[(p, t)], name=f"hours_required_{p}_{t}")
+                for d in days_list:
+                    model.addCons(y[(p, t, r, d)] <= M_daily * x[(p, t, r)], name=f"link_y_x_{p}_{t}_{r}_{d}")
 
-    # (d) Vincular y con x: y <= M*x (igual, M=8)
-    for p in projects:
-        for t in tasks[p]:
-            for r in resources:
-                for d in days:
-                    model.addCons(y[(p, t, r, d)] <= M * x[(p, t, r)], name=f"BigM_hours_{p}_{t}_{r}_{d}")
+            model.addCons(quicksum(y[(p, t, r, d)] for r in resource_names_list for d in days_list) == H_pt, name=f"total_hours_{p}_{t}")
 
-    # --- (e) Disponibilidad diaria (CORREGIDO) ---
-    for r in resources:
-        for d in days:
-            # Obtener horas disponibles del diccionario de entrada. Usa .get con default 0.
-            # ASUME que 'availability' está indexado por (resource_name, day_number)
-            available_hours_for_resource_day = availability.get((r, d), 0) # <-- MODIFICADO
+    # --- 4.2 Disponibilidad Diaria por Recurso ---
+    print("DEBUG SCIP: Añadiendo restricciones de disponibilidad...")
+    for r in resource_names_list:
+        for d in days_list:
+            available_hours = availability_numeric.get((r, d), 0)
+            model.addCons(quicksum(y[(p, t, r, d)] for p in project_names for t in tasks_per_project_name[p]) <= available_hours, name=f"avail_{r}_{d}")
 
-            total_hours_on_day = quicksum(y[(p, t, r, d)] for p in projects for t in tasks[p])
-            # La suma de horas no puede exceder la disponibilidad específica
-            model.addCons(total_hours_on_day <= available_hours_for_resource_day, name=f"avail_{r}_{d}") # <-- MODIFICADO
+    # --- 4.3 Enlace y -> WorkDay -> EndDay ---
+    print("DEBUG SCIP: Añadiendo restricciones de enlace y-work_day-end_day...")
+    for p in project_names:
+        for t in tasks_per_project_name[p]:
+            for d in days_list:
+                # Si se trabaja alguna hora (y > 0), work_day debe ser 1
+                for r in resource_names_list:
+                     model.addCons(y[(p, t, r, d)] <= M_daily * work_day[(p, t, d)], name=f"link_y_workday_{p}_{t}_{r}_{d}")
 
-    # (f) Vincular y con z: y[(p,t,r,d)] <= M * z[(p,t,d)] (igual, M=8)
-    for p in projects:
-        for t in tasks[p]:
-            for d in days:
-                 for r in resources: # Asegurar que si CUALQUIER recurso trabaja, z=1
-                    model.addCons(y[(p, t, r, d)] <= M * z[(p, t, d)], name=f"vinculo_y_z_{p}_{t}_{r}_{d}")
+                # end_day debe ser >= a cualquier día 'd' en el que se trabaje (work_day=1)
+                model.addCons(end_day[(p, t)] >= d - M_days * (1 - work_day[(p, t, d)]), name=f"link_endday_workday_{p}_{t}_{d}")
 
+    # --- 4.4 Restricciones de Secuencialidad (Finish-to-Start) ---
+    print("DEBUG SCIP: Añadiendo restricciones de secuencia...")
+    for p in project_names:
+        sorted_tasks = sorted(
+            tasks_per_project_name[p],
+            key=lambda t: task_info.get((p, t), {}).get('sequence', float('inf'))
+        )
+        for i in range(len(sorted_tasks) - 1):
+            t_i = sorted_tasks[i]
+            t_i_plus_1 = sorted_tasks[i+1]
+            # Finish-to-Start: end_day[t_i] <= (d - 1) + M_days * (1 - work_day[t_{i+1}, d])
+            for d in days_list:
+                 if d > 1:
+                     model.addCons(end_day[(p, t_i)] <= (d - 1) + M_days * (1 - work_day[(p, t_i_plus_1, d)]), name=f"seq_finish_start_{p}_{t_i}_{t_i_plus_1}_day_{d}")
+                 else: # d=1
+                      if hours_required_dict.get((p,t_i),0) > 0:
+                           model.addCons(work_day[(p, t_i_plus_1, 1)] == 0, name=f"seq_no_start_d1_{p}_{t_i}_{t_i_plus_1}")
 
-    # 4) RESOLVER con Límite de Tiempo y Logs Visibles
-    # model.hideOutput() # <-- MODIFICADO (Comentado para ver logs)
-    model.setParam('limits/time', 300) # <-- AÑADIDO (300 segundos = 5 minutos)
-    print("Iniciando solver SCIP...") # <-- AÑADIDO
+    # --- 4.5 Restricciones de Deadline ---
+    print("DEBUG SCIP: Añadiendo restricciones de deadline...")
+    for project_data in projects_list:
+        p_name = project_data['name']
+        deadline_date = project_data.get('deadline')
+        if deadline_date:
+            deadline_day_number = (deadline_date - start_date).days + 1
+            if deadline_day_number <= days_list[-1]:
+                for t in tasks_per_project_name[p_name]:
+                    model.addCons(end_day[(p_name, t)] <= deadline_day_number, name=f"deadline_{p_name}_{t}")
+            # else: (Opcional: imprimir advertencia si deadline fuera del horizonte)
+
+    # --- 4.6 Definición del Makespan ---
+    print("DEBUG SCIP: Añadiendo definición de makespan...")
+    for p in project_names:
+        for t in tasks_per_project_name[p]:
+            model.addCons(makespan >= end_day[(p, t)], name=f"makespan_def_{p}_{t}")
+
+    # 5. Resolver
+    # model.hideOutput() # Comentar para ver logs durante la prueba
+    model.setParam('limits/time', 300) # Límite de tiempo
+    print("Iniciando solver SCIP...")
     start_time = time.time()
     try:
         model.optimize()
     except Exception as e:
-        print(f"Error durante model.optimize(): {e}") # Capturar posibles errores de SCIP
+        print(f"Error durante model.optimize(): {e}")
     end_time = time.time()
-    print(f"Solver SCIP finalizado en {end_time - start_time:.2f} segundos.") # <-- AÑADIDO
+    solver_runtime = end_time - start_time
+    print(f"Solver SCIP finalizado en {solver_runtime:.2f} segundos.")
     status = model.getStatus()
-    print(f"Estado del solver SCIP: {status}") # <-- MODIFICADO (más claro)
+    print(f"Estado del solver SCIP: {status}")
 
-    # 5) EXTRAER SOLUCIÓN
-    optimal_cost = None
+    # 6. Extraer Resultados
+    optimal_makespan = None
     assignment = {}
-    # Extraer solución si es óptima O si se encontró una solución factible antes del timeout
+    task_completion_days = {}
+
     if status == "optimal" or (status == "timelimit" and model.getNSols() > 0):
-        try:
-            optimal_cost = model.getObjVal()
-            print(f"Costo (potencialmente subóptimo si hubo timeout): {optimal_cost}") # <-- AÑADIDO
+         try:
+             optimal_makespan = model.getObjVal() # El objetivo es el makespan
+             print(f"Makespan óptimo (o subóptimo si hubo timeout): {optimal_makespan}")
+             best_solution = model.getBestSol()
+             if best_solution is not None:
+                 # Extraer días de finalización
+                 for p in project_names:
+                     for t in tasks_per_project_name[p]:
+                          # Usar getSolVal con la solución encontrada
+                          task_completion_days[(p, t)] = model.getSolVal(best_solution, end_day[(p, t)])
+                 # Extraer asignación de horas
+                 for p in project_names:
+                     for t in tasks_per_project_name[p]:
+                         for r in resource_names_list:
+                             for d in days_list:
+                                 val = model.getSolVal(best_solution, y[(p, t, r, d)])
+                                 if val > 1e-4:
+                                     assignment[(p, t, r, d)] = val
+             else:
+                  print("Advertencia: SCIP reportó tener soluciones, pero no se pudo obtener la mejor (getBestSol).")
 
-        #------------ GetSolVal ------------------
-            best_solution = model.getBestSol()
-            if best_solution is not None:
-            # Guardar solo las horas > 0.0001
-                for p in projects:
-                    for t in tasks[p]:
-                        for r in resources:
-                            for d in days:
-                                # Usar model.getSolVal() para obtener valor de la mejor solución encontrada
-                                val = model.getSolVal(best_solution,y[(p, t, r, d)])
-                                if val > 1e-4:
-                                    assignment[(p, t, r, d)] = val
-        except Exception as e:
-            # A veces SCIP puede dar error al extraer la solución si no terminó bien
+         except Exception as e:
              print(f"Error al extraer la solución de SCIP: {e}")
-             optimal_cost = None
+             optimal_makespan = None
              assignment = {}
-    # Si no hay solución o hubo error antes
-    if optimal_cost is None:
-         print("No se encontró solución óptima o factible, o hubo un error.")
+             task_completion_days = {}
 
-    return optimal_cost, assignment
+    if optimal_makespan is None and not assignment: # Si no se pudo extraer nada
+         print("No se encontró/extrajo una solución factible para el makespan.")
+
+
+    # Devolver makespan, asignación y tiempos de finalización
+    return optimal_makespan, assignment, task_completion_days
 
 
 if __name__ == '__main__':
