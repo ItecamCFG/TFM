@@ -1,6 +1,6 @@
 # TFM: Prototipo de Planificación de Proyectos
 
-Este repositorio contiene un **primer prototipo** para la resolución de un problema de planificación de proyectos (**PPP**, *Project Planning Problem*). La idea base se inspira en el **Job Scheduling Problem** (**JSP**), y sirve como **demo** de las capacidades de **Itecam** en la **resolución de problemas de optimización combinatoria**. Además, este trabajo busca sentar las bases para explorar diferentes técnicas de optimización dentro de un entorno **B2B**.
+Este repositorio contiene un **primer prototipo** para la resolución de un problema de planificación de proyectos (**PPP**, *Project Planning Problem*). La idea base se inspira en el **Job Scheduling Problem** (**JSP**), y sirve como **demo** de las capacidades de **Itecam** en la **resolución de problemas de optimización combinatoria**, un primer escaparate donde mostrar estas capacidades podría ser el **B2B** industrial el próximo 22 de Mayo. Además, este trabajo busca sentar las bases para explorar diferentes técnicas de optimización y explorar usos futuros de la computación cuántica.
 
 ---
 
@@ -19,7 +19,7 @@ El **Project Planning Problem** (PPP) propuesto aquí es una **variante** del Jo
 
 ## Estructura del Repositorio
 
-1. **`model_debug.py`**  
+1. **`model.py`**  
    Contiene la lógica de modelado y la definición de dos funciones principales de resolución:
    - `solve_scheduling_problem()` (usando [PuLP](https://github.com/coin-or/pulp) con CBC).
    - `solve_scheduling_problem_scip()` (usando [PySCIPOpt](https://github.com/scipopt/PySCIPOpt) con SCIP).  
