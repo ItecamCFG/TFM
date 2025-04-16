@@ -14,8 +14,8 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("🏢📊📈 Gestión y Optimización Avanzada")
-st.caption("Desarrollado por Itecam ")
+st.title("🏢📊📈 Planificador Optimizado.")
+st.caption("Desarrollado por Itecam-Centro Tecnológico Industrial.")
 
 # --- Inicializar Estado (Usará data_manager v2) ---
 initialize_session_state()
