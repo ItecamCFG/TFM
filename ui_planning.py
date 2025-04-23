@@ -8,13 +8,13 @@ import traceback  # Importa la biblioteca traceback
 import time
 
 from optimization.data_models import OptimizationInput, Project, Task, Resource, OptimizationConfig, OptimizationResult
-from optimization.makespan_model_pulp import MakespanMinimizationPuLP
+from optimization.model_pulp import MakespanMinimizationPuLP
+from optimization.model_SCIP import MakespanMinimizationSCIP  # Placeholder para SCIP
 
 # Mapeo de opciones del UI a clases de modelo
-# ¡Asegúrate que las clases existen en las rutas importadas!
 MODEL_MAPPING = {
-    "Minimizar Makespan (PuLP/CBC)": MakespanMinimizationPuLP,
-    "Minimizar Makespan (PySCIPOpt)": None,  # Placeholder para SCIP
+    "Min (PuLP/CBC)": MakespanMinimizationPuLP,
+    "Min (PySCIPOpt)":MakespanMinimizationSCIP,  # Placeholder para SCIP
     }
 
 DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]

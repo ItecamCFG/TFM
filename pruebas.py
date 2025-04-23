@@ -7,7 +7,7 @@ import traceback
 
 # Importar Clases de Datos y Modelos
 from data_models import OptimizationInput, OptimizationConfig, Project, Task, Resource
-from optimization.makespan_model_pulp import MakespanMinimizationPuLP
+from optimization.model_pulp import MakespanMinimizationPuLP
 # from optimization.cost_model_pulp import CostMinimizationPuLP # Si creas esta clase
 # from optimization.makespan_model_scip import MakespanMinimizationSCIP # Si creas esta
 
