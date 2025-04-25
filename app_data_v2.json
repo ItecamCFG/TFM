@@ -9,6 +9,11 @@
             "id": "proj_c301f3ac",
             "name": "Clustering Datos Prilux",
             "deadline": "2025-07-31"
+        },
+        {
+            "id": "proj_9b06b026",
+            "name": "Chatbot PRL",
+            "deadline": "2025-06-17"
         }
     ],
     "tasks": [
@@ -67,6 +72,22 @@
             "hours": 25,
             "expertise": "Junior",
             "sequence": 3
+        },
+        {
+            "id": "task_f82b3d4e",
+            "project_id": "proj_9b06b026",
+            "name": "RAG Documentos",
+            "hours": 10,
+            "expertise": "Senior",
+            "sequence": 1
+        },
+        {
+            "id": "task_c9825590",
+            "project_id": "proj_9b06b026",
+            "name": "Twilio Deploy",
+            "hours": 10,
+            "expertise": "Junior",
+            "sequence": 2
         }
     ],
     "resources": [
