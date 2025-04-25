@@ -7,7 +7,7 @@
         },
         {
             "id": "proj_c301f3ac",
-            "name": "Clustering Datos Prilux",
+            "name": "Clustering Datos Comerciales",
             "deadline": "2025-07-31"
         },
         {
@@ -92,7 +92,7 @@
     ],
     "resources": [
         {
-            "name": "Carlos Becario",
+            "name": "Carlos Muñoz",
             "expertise": "Junior",
             "cost": 30,
             "Lunes": 8,
