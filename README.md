@@ -97,7 +97,7 @@ Este proyecto se publica bajo [MIT License](LICENSE) (o la que corresponda). Rev
 Para dudas o más detalles sobre la integración con Itecam, contacta con:
 
 - **Itecam** - Centro Tecnológico Industrial de Castilla-La Mancha  
-- Correo: [cristian.franco@itecam.com](mailto:transformacion.digital@itecam.com)
+- Correo: [iteligencia.computacion@itecam.com](mailto:transformacion.digital@itecam.com)
 
 ¡Gracias por tu interés en el proyecto!
 

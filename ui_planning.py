@@ -3,312 +3,356 @@ import streamlit as st
 import pandas as pd
 import plotly.figure_factory as ff
 import plotly.express as px
-from datetime import datetime, timedelta, date
-import traceback  # Importa la biblioteca traceback
+from datetime import date, timedelta, datetime
+import traceback
+import time
 
-# Asume que model.py está en el mismo directorio o en PYTHONPATH
-try:
-    from model import solve_scheduling_problem, solve_scheduling_problem_scip
-except ImportError:
-    st.error("Error: No se pudo encontrar el archivo 'model.py'. Asegúrate de que exista.")
-    # Función dummy si model.py falta (¡necesitará ser actualizada!)
-    def solve_scheduling_problem(*args, **kwargs):
-        st.warning("Función 'solve_scheduling_problem' no encontrada o no actualizada. Usando resultado dummy.")
-        # Devolver datos dummy que *ignoran* secuencias y deadlines
-        # ¡ESTO ES SOLO PARA VISUALIZACIÓN DE UI, NO REFLEJA LA LÓGICA CORRECTA!
-        assignment = {
-            ('Project Alpha', 'Analysis', 'Alice', 1): 8,
-            ('Project Alpha', 'Analysis', 'Alice', 2): 8,
-            ('Project Alpha', 'Analysis', 'Alice', 3): 4,
-            ('Project Alpha', 'Development', 'Alice', 4): 8, # Ignora secuencia
-            ('Project Beta', 'Design', 'Charlie', 1): 8,
-        }
-        return 2500.00, assignment # Coste y asignación dummy
+# --- Importar Clases ---
+# Asegúrate que las rutas sean correctas según tu estructura
+from optimization.data_models import OptimizationInput, OptimizationConfig, Project, Task, Resource, OptimizationResult
+from optimization.base_model import OptimizationModel # Importar base si necesitas type hinting
+from optimization.model_pulp import MakespanMinimizationPuLP
+from optimization.neal_model import NealMakespanModel
+from optimization.model_SCIP import MakespanMinimizationSCIP
 
-from data_manager import DAYS, EXPERTISE_LEVELS # Importar constantes
-DAY_NAMES = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"] # Nombres de días para la disponibilidad
+# --- Mapeo de Opciones a Clases ---
+MODEL_MAPPING = {
+    "Minimizar Makespan (PuLP/CBC)": MakespanMinimizationPuLP,
+    "Minimizar Makespan (Neal QUBO)": NealMakespanModel, 
+    "Minimizar Makespan (PySCIPOpt)": MakespanMinimizationSCIP, 
+}
 
+# --- Constantes ---
+DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"] # Solo días laborables para disponibilidad
+
+
+# --- Función de Preparación (Simplificada/Opcional) ---
+# Ahora la preparación principal está en _prepare_common_data de la clase base.
+# Esta función solo necesita crear los objetos de datos si no lo haces ya en otros módulos UI.
+def get_optimization_input(app_data, config: OptimizationConfig) -> OptimizationInput:
+    """Crea el objeto OptimizationInput a partir de app_data."""
+    # Validación básica
+    if not app_data.get('projects') or not app_data.get('tasks') or not app_data.get('resources'):
+        raise ValueError("Faltan datos esenciales (proyectos, tareas o recursos)")
+
+    # Convertir dicts a objetos DataClass (si es necesario)
+    try:
+        st.info("Preparando datos para optimización...")
+        projects_obj = [Project(**p) for p in app_data.get('projects', [])]
+        # Convertir deadline de string a date si viene de JSON
+        for p in projects_obj:
+             if isinstance(p.deadline, str): p.deadline = date.fromisoformat(p.deadline)
+
+        tasks_obj = [Task(**t) for t in app_data.get('tasks', [])]
+        resources_raw = app_data.get('resources', [])
+        resources_obj = []
+        for r_dict in resources_raw:
+             # Construimos el diccionario de disponibilidad solo con los dias esperados
+             availability_dict = {day_name: r_dict.get(day_name,0) for day_name in DAYS}
+             resource_name = r_dict.get('name')
+             if not resource_name: # Si es None o está vacio
+                  raise ValueError(f"Se encontro un recurso sin nombre en los datos:{r_dict}")
+        # Crear el objeto Resource
+             resources_obj.append(Resource(
+                 name=r_dict.get('name', 'Desconocido'),
+                 expertise=r_dict.get('expertise', 'Junior'),
+                 cost=r_dict.get('cost', 0.0),
+                 availability=availability_dict
+             ))
+
+    except Exception as e:
+        raise ValueError(f"Error al convertir datos de app_data a objetos: {e}")
+
+    return OptimizationInput(
+        projects=projects_obj,
+        tasks=tasks_obj,
+        resources=resources_obj,
+        config=config
+    )
+
+
+# --- Función Principal de la Pestaña ---
 def display_planning():
-    """Muestra la UI para ejecutar la planificación y ver los resultados."""
-    st.header("Planificación y Resultados")
-    app_data = st.session_state.app_data
+    """Función principal que maneja la UI de planificación"""
+    st.header("📅 Planificación y Resultados")
+    # Obtener datos de la sesión (asume que tiene 'projects', 'tasks', 'resources')
+    app_data = st.session_state.get('app_data', {})
 
-    if not app_data.get('tasks') or not app_data.get('resources'):
-        st.warning("Añade proyectos con tareas y recursos antes de poder planificar.")
+    # Verificar datos mínimos requeridos
+    if not app_data.get('projects') or not app_data.get('tasks') or not app_data.get('resources'):
+        st.warning("⚠️ Añade proyectos, tareas y recursos antes de planificar")
         return
 
-    # --- NUEVO: Selector de Solver ---
-    solver_choice = st.selectbox(
-        "Selecciona el Solver a utilizar:",
-        options=["CBC (PuLP)", "SCIP (PySCIPOpt)"],
-        index=0 # Por defecto CBC
-    )
-    st.caption("SCIP suele ser más rápido para problemas complejos, pero requiere instalación. CBC es más lento pero suele venir incluido.")
+    # --- Opciones de Configuración ---
+    col_solver, col_time = st.columns(2)
+    with col_solver:
+        model_choice = st.selectbox(
+            "**Modelo/Objetivo a Optimizar:**",
+            options=list(MODEL_MAPPING.keys()),
+            index=0,
+            key="model_choice_selectbox"
+        )
+    with col_time:
+        # El límite de tiempo aplica a solvers MILP, Neal tiene 'num_reads'
+        # Podemos dejarlo aquí como referencia o hacerlo específico
+        time_limit = st.number_input("Límite Tiempo MILP (s) / Ref. Neal:", min_value=30, max_value=1200, value=300, step=30)
+        # num_reads = st.number_input("Número de Lecturas (Neal):", min_value=100, max_value=10000, value=1000, step=100)
 
+    start_date_option = st.date_input("Fecha de inicio de la planificación:", value=date.today())
 
-    if st.button(f"🚀 Ejecutar Planificación con {solver_choice.split(' ')[0]}"):
-        # --- Preparar datos para el modelo (v2.1 - CON CORRECCIÓN DE AVAILABILITY) ---
-        st.info("Preparando datos para el modelo...")
+    # --- Botón de Ejecución ---
+    if st.button(f"🚀 Ejecutar Planificación: {model_choice}", type="primary"):
+        # Limpiar resultado anterior y fecha de inicio anterior
+        st.session_state.pop('last_result', None)
+        st.session_state.pop('last_run_start_date', None) # Limpiar la fecha de inicio anterior
 
-        # Proyectos: Lista de diccionarios (sin cambios aquí)
-        projects_list = app_data['projects'] # [{'id': ..., 'name':..., 'deadline':...}]
-        project_names_list = [p['name'] for p in projects_list] # Nombres para PuLP/SCIP si los usan así
-        project_id_to_name = {p['id']: p['name'] for p in projects_list}
-        project_name_to_id = {v: k for k, v in project_id_to_name.items()} # Inverso
+        try:
+            # 1. Crear Configuración
+            config = OptimizationConfig(
+                start_date=start_date_option,
+                solver_time_limit=time_limit,
+                # Añadir num_reads si es configurable:
+                # num_reads=st.session_state.get('neal_num_reads', 100)
+            )
 
-        # Tareas: Lista de diccionarios (sin cambios aquí)
-        tasks_list = app_data['tasks'] # [{'id': ..., 'project_id':..., 'name':..., 'hours':..., 'expertise':..., 'sequence':...}]
+            # 2. Crear Input del Modelo (validando dentro)
+            with st.status("⚙️ Preparando y validando datos...", expanded=False) as status:
+                 input_data = get_optimization_input(app_data, config)
+                 status.update(label="✅ Datos listos", state="complete")
 
-        # Crear estructuras necesarias por el modelo (adaptado de tu PuLP original)
-        tasks_per_project_name = {p_name: [] for p_name in project_names_list}
-        hours_required_dict = {}
-        expertise_required_dict = {}
-        for task in tasks_list:
-            proj_id = task['project_id']
-            proj_name = project_id_to_name.get(proj_id)
-            if proj_name:
-                task_name = task['name']
-                 # Evitar duplicados por nombre si la estructura lo requiere
-                if task_name not in tasks_per_project_name[proj_name]:
-                     tasks_per_project_name[proj_name].append(task_name)
-                     hours_required_dict[(proj_name, task_name)] = task['hours']
-                     expertise_required_dict[(proj_name, task_name)] = task['expertise']
+            # 3. Instanciar y Resolver
+            SelectedModelClass = MODEL_MAPPING[model_choice]
+            model_instance = SelectedModelClass(input_data)
 
+            spinner_msg = f"🔍 Optimizando con {model_choice}..."
+            if "Neal" in model_choice:
+                 spinner_msg += " (Simulated Annealing)"
+            else:
+                 spinner_msg += f" (Límite: {time_limit}s)"
 
-        # Recursos: Lista de diccionarios (sin cambios aquí)
-        resources_list = app_data['resources'] # [{'name':..., 'expertise':..., 'cost':..., 'Lunes':..., ...}]
-        resource_names_list = [r['name'] for r in resources_list]
-        expertise_dict = {r['name']: r['expertise'] for r in resources_list}
-        cost_dict = {r['name']: r['cost'] for r in resources_list}
-        # Guardamos la disponibilidad por nombre de día para el mapeo
-        availability_by_day_name = {
-            r['name']: {day_name: r.get(day_name, 0) for day_name in DAY_NAMES}
-            for r in resources_list
-        }
+            with st.spinner(spinner_msg):
+                result = model_instance.solve() # Llamar al método solve del objeto
 
-        # --- Calcular Horizonte de Planificación (days) y Disponibilidad Numérica ---
-        # Calcular N_days: desde hoy hasta la última deadline + buffer (ej. 7 días)
-        today = date.today()
-        latest_deadline = today
-        if app_data.get('projects'):
-            deadlines = [p.get('deadline') for p in app_data['projects'] if p.get('deadline')]
-            if deadlines:
-                latest_deadline = max(deadlines)
+            # 4. Guardar Resultado y la Fecha de Inicio USADA
+            st.session_state['last_result'] = result # <-- GUARDAR EL OBJETO RESULTADO
+            st.session_state['last_run_start_date'] = input_data.config.start_date # <-- GUARDAR LA FECHA DE INICIO USADA
+            st.success("✅ Optimización finalizada.")
 
-        # Añadir un buffer (ej. 1 mes) por si acaso o si no hay deadlines
-        final_planning_date = latest_deadline + timedelta(days=30)
-        if final_planning_date <= today: # Asegurar al menos unos días si deadline es pasado/hoy
-             final_planning_date = today + timedelta(days=30)
+        except ValueError as ve: # Capturar errores de validación de datos
+             st.error(f"❌ Error en los Datos: {str(ve)}")
+             st.session_state['last_result'] = OptimizationResult(status="Data Error", error_message=str(ve))
+             # No guardamos last_run_start_date si hay error de datos, se usará date.today()
+        except Exception as e:
+            st.error(f"❌ Error crítico durante la ejecución: {str(e)}")
+            st.error(traceback.format_exc())
+            st.session_state['last_result'] = OptimizationResult(status="Execution Error", error_message=traceback.format_exc())
+            # No guardamos last_run_start_date si hay error de ejecución
 
-        n_days = (final_planning_date - today).days + 1 # Incluir hoy
-        if n_days <= 0: n_days = 30 # Mínimo 30 días si algo falla
-
-        days_list = list(range(1, n_days + 1)) # Lista de números de día [1, 2, ..., N]
-
-        # Crear availability_numeric {(resource, day_number): hours}
-        availability_numeric = {}
-        start_weekday = today.weekday() # 0=Lunes, 6=Domingo
-
-        for r_name in resource_names_list:
-            for d_num in days_list:
-                # Calcular qué día de la semana es d_num (0=Lunes, ..., 6=Domingo)
-                current_weekday = (start_weekday + d_num - 1) % 7
-                if 0 <= current_weekday < len(DAY_NAMES): # Es Lunes-Viernes?
-                    day_name = DAY_NAMES[current_weekday]
-                    # Obtener horas de la estructura original
-                    hours = availability_by_day_name.get(r_name, {}).get(day_name, 0)
-                    availability_numeric[(r_name, d_num)] = hours
-                else: # Es Sábado o Domingo
-                    availability_numeric[(r_name, d_num)] = 0 # Disponibilidad 0
-
-        # --- Validaciones Previas (igual que antes) ---
-        # ... (tu código de validación) ...
-        valid = True
-        if not projects_list or not tasks_list or not resources_list:
-             st.error("Faltan proyectos, tareas o recursos.")
-             valid = False
-        # ... (más validaciones si las tienes) ...
-        if not valid:
-             st.warning("Corrige los errores en los datos antes de planificar.")
-             return
-
-
-        # --- Llamada al Solver Seleccionado ---
-        st.warning("""
-        **¡Importante!** La planificación aún necesita considerar:
-        1.  **Secuencia de Tareas:** No implementado en `model.py`.
-        2.  **Deadlines de Proyecto:** No implementado en `model.py`.
-        3.  **Continuidad/Penalización Cambio:** No implementado en `model.py`.
-
-        **Asegúrate de que tu `model.py` se actualice para estas restricciones.**
-        """)
-        st.info(f"Ejecutando el modelo con {solver_choice} (Límite de tiempo: 300s)...")
-        optimal_cost = None
-        assignment = {}
-
-        with st.spinner(f'Buscando la mejor planificación con {solver_choice}... (puede tardar)'):
-            try:
-                if solver_choice == "CBC (PuLP)":
-                    # Pasar los datos en el formato que espera la función PuLP original
-                     optimal_cost, assignment = solve_scheduling_problem(
-                         project_names_list,
-                         tasks_per_project_name,
-                         hours_required_dict,
-                         expertise_required_dict,
-                         resource_names_list,
-                         expertise_dict,
-                         cost_dict,
-                         days_list, # Pasar lista de números de día
-                         availability_numeric # Pasar disponibilidad numérica
-                     )
-                elif solver_choice == "SCIP (PySCIPOpt)":
-                     # Pasar los datos en el formato que espera la función PySCIPOpt
-                     # (Asegúrate de que coincida, puede que necesites ajustar ligeramente)
-                     optimal_cost, assignment = solve_scheduling_problem_scip(
-                         project_names_list,
-                         tasks_per_project_name,
-                         hours_required_dict,
-                         expertise_required_dict,
-                         resource_names_list,
-                         expertise_dict,
-                         cost_dict,
-                         days_list, # Pasar lista de números de día
-                         availability_numeric # Pasar disponibilidad numérica
-                     )
-
-                st.session_state['last_run_success'] = optimal_cost is not None or bool(assignment) # Exito si hay coste o asignación
-                st.session_state['optimal_cost'] = optimal_cost
-                st.session_state['assignment'] = assignment
-
-            except Exception as e:
-                st.error(f"Ocurrió un error durante la ejecución del modelo: {e}")
-                import traceback
-                st.error(traceback.format_exc()) # Imprimir traceback completo para debug
-                st.session_state['last_run_success'] = False
-                st.session_state['optimal_cost'] = None
-                st.session_state['assignment'] = None
-
+        # Refrescar para mostrar resultados
         st.rerun()
 
-    # --- Mostrar Resultados (si existen en el estado) ---
-    if 'last_run_success' in st.session_state:
-        st.subheader("Resultados de la Última Planificación")
-        # (El código para mostrar resultados (tabla, Gantt) puede permanecer similar al anterior,
-        # pero necesitará adaptarse al formato exacto que devuelva tu *nuevo* `assignment`.
-        # El Gantt, en particular, debería ahora reflejar las secuencias si el modelo las calcula.)
-
-        if st.session_state['last_run_success']:
-            optimal_cost = st.session_state.get('optimal_cost')
-            assignment = st.session_state.get('assignment') # Asume formato {(proj_name, task_name, resource_name, day): hours}
-
-            if optimal_cost is not None and assignment is not None:
-                if optimal_cost >= 0 and assignment : # Checkear coste y si hay asignaciones
-                    st.metric(label="**Coste Total Óptimo Estimado**", value=f"{optimal_cost:.2f} €")
-
-                    # --- Tabla de Asignación ---
-                    st.subheader("Tabla de Asignación Detallada")
-                    # (Mismo código que antes para crear schedule_df de assignment)
-                    schedule_data = []
-                    if isinstance(assignment, dict): # Verificar que assignment sea un diccionario
-                        for key, hours in assignment.items():
-                            # Asumiendo que la clave es una tupla (proyecto, tarea, recurso, día)
-                            if isinstance(key, tuple) and len(key) == 4 and hours > 0.01:
-                                proj, task_name, resource, day = key
-                                schedule_data.append({
-                                    "Proyecto": proj,
-                                    "Tarea": task_name,
-                                    "Recurso": resource,
-                                    "Día": day,
-                                    "Horas Asignadas": round(hours, 2)
-                                })
-                    if schedule_data:
-                        schedule_df = pd.DataFrame(schedule_data)
-                        st.dataframe(schedule_df, use_container_width=True)
-                    else:
-                        st.info("El modelo se ejecutó correctamente pero no se realizaron asignaciones significativas.")
-                else:
-                    st.info("No se encontraron asignaciones para mostrar.")
-            else:
-                st.warning("El formato de 'assignment' devuelto por el modelo no es el esperado (se esperaba un diccionario).")
+    # --- Mostrar Resultados ---
+    # Llamar a la función show_results al final
+    show_results()
 
 
-            # --- Diagrama de Gantt (Simplificado - Necesitaría ajuste fino con modelo real) ---
-            st.subheader("Diagrama de Gantt (Estimado)")
+# --- Función para Mostrar Resultados (Adaptada) ---
+def show_results():
+    """Muestra los resultados de la planificación leyendo de st.session_state."""
+    if 'last_result' not in st.session_state:
+        st.info("Ejecuta la planificación para ver los resultados.")
+        return
+
+    st.divider()
+    st.subheader("📊 Resultados de la Planificación")
+
+    result = st.session_state['last_result']
+
+    # Mostrar Estado y Mensajes de Error/Advertencia
+    if result.status == "Optimal":
+        st.success(f"Solución Óptima encontrada en {result.solver_runtime:.2f}s.")
+    elif result.status == "Timelimit":
+        st.warning(f"Límite de tiempo alcanzado ({result.solver_runtime:.2f}s). Mostrando la mejor solución encontrada (puede no ser óptima).")
+    elif result.status == "Feasible" or result.status == "Feasible (Validation Pending)":
+         st.success(f"Solución factible encontrada por Neal en {result.solver_runtime:.2f}s.")
+         if "Validation Pending" in result.status:
+              st.warning("⚠️ **Importante:** La validez de esta solución QUBO no ha sido comprobada contra las restricciones originales.")
+    elif "Error" in result.status:
+         st.error(f"Falló la ejecución: {result.status}")
+         if result.error_message:
+              st.code(result.error_message)
+         return # No mostrar más si hubo error grave
+    elif result.status == "Infeasible":
+         st.error("El modelo resultó ser infactible. Revisa los datos y restricciones.")
+         return
+    else: # Not Run, etc.
+         st.info(f"Estado del solver: {result.status}")
+         # return # Podrías salir aquí o intentar mostrar lo que haya
+
+    # --- Métricas Principales ---
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        if result.makespan is not None:
+             st.metric("Makespan Estimado", f"{result.makespan:.0f} días")
+        else:
+             st.metric("Makespan Estimado", "N/A")
+    with col2:
+        # El coste total se debe calcular en _extract_results si se quiere mostrar
+        if result.total_cost is not None:
+             st.metric("Coste Total Estimado", f"€ {result.total_cost:.2f}")
+        else:
+             st.metric("Coste Total Estimado", "N/A")
+    with col3:
+         # Mostrar energía para Neal? O runtime?
+         st.metric("Tiempo del Solver", f"{result.solver_runtime:.2f}s")
+         # metadata = st.session_state.get('model_metadata', {}) # Ya no necesario si info está en result
+         # st.metric("Días Planificados", metadata.get('planning_horizon', 'N/A'))
+
+
+    # --- Tabla de Asignaciones ---
+    assignment = result.assignment
+    df = None
+    if assignment:
+        st.subheader("🗓 Asignaciones Detalladas")
+        try:
+            schedule_data = []
+            for (proj, task, resource, day), hours in assignment.items():
+                 if hours > 0.01: # Filtrar asignaciones mínimas
+                      schedule_data.append({
+                           "Proyecto": proj, "Tarea": task, "Recurso": resource,
+                           "Día Num.": day, "Horas": round(hours, 2)
+                       })
             if schedule_data:
-                # (Mismo código que antes para crear gantt_df y figura px.timeline)
-                # Crear el Gantt chart (código igual al de la versión anterior)
-                gantt_data = []
-                start_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                start_date -= timedelta(days=start_date.weekday())
-                day_to_date = {i + 1: start_date + timedelta(days=i) for i in range(len(DAYS))}
+                 df = pd.DataFrame(schedule_data)
+                 st.dataframe(
+                     df.sort_values(by=["Proyecto", "Día Num."]),
+                     use_container_width=True,
+                     hide_index=True
+                 )
+            else:
+                 st.info("No se encontraron asignaciones significativas en la solución.")
+        except Exception as e:
+            st.error(f"Error al procesar asignaciones para la tabla: {e}")
+            df = None # Asegurar que df es None si falla
+    else:
+        st.info("No hay datos de asignación disponibles.")
 
-                project_name_to_id = {p['name']: p['id'] for p in app_data.get('projects', [])}
-                task_name_to_data = {(t['project_id'], t['name']): t for t in app_data.get('tasks', [])}
+    # --- Diagrama de Gantt ---
+    # --- Visualización Detallada por Recurso ---
+    if df is not None and not df.empty:
+        st.subheader("🛠 Visualización por Recurso")
 
-                task_resource_groups = {}
+        recurso_seleccionado = st.selectbox("Selecciona un recurso:", df["Recurso"].unique())
+        gantt_start_date = st.session_state.get('last_run_start_date', date.today())
+        df_recurso = df[df["Recurso"] == recurso_seleccionado].copy()
+        df_recurso["Fecha"] = df_recurso["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
 
-                for item in schedule_data:
-                    proj_name = item['Proyecto']
-                    task_name = item['Tarea']
-                    resource = item['Recurso']
-                    day = item['Día']
-                    hours = item['Horas Asignadas']
+        fig_barras = px.bar(
+            df_recurso,
+            x="Fecha",
+            y="Horas",
+            color="Proyecto",
+            hover_data=["Tarea"],
+            title=f"Horas asignadas por día para el recurso: {recurso_seleccionado}"
+        )
+        fig_barras.update_layout(xaxis_title="Fecha", yaxis_title="Horas asignadas")
+        st.plotly_chart(fig_barras, use_container_width=True)
+        
+        st.subheader("🧱 Visualización por Proyecto")
 
-                    proj_id = project_name_to_id.get(proj_name)
-                    task_info = task_name_to_data.get((proj_id, task_name))
-                    task_seq = task_info.get('sequence', 0) if task_info else 0
+        proyecto_seleccionado = st.selectbox("Selecciona un proyecto:", df["Proyecto"].unique(), key="project_gantt_selector")
+        df_proyecto = df[df["Proyecto"] == proyecto_seleccionado].copy()
+        df_proyecto["Fecha"] = df_proyecto["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
 
-                    key = (proj_name, task_name, resource, task_seq) # Añadir secuencia a la clave
-                    if key not in task_resource_groups:
-                        task_resource_groups[key] = []
-                    task_resource_groups[key].append({'day': day, 'hours': hours})
+        # Agrupamos por tarea para obtener inicio y fin
+        gantt_data = []
+        for tarea, grupo in df_proyecto.groupby("Tarea"):
+            start = grupo["Fecha"].min()
+            end = grupo["Fecha"].max()
+            recurso = grupo["Recurso"].iloc[0]
+            gantt_data.append({
+                "Tarea": tarea,
+                "Inicio": start,
+                "Fin": end,
+                "Recurso": recurso
+            })
 
+        df_gantt_proj = pd.DataFrame(gantt_data)
 
-                for (proj, task, resource, seq), days_info in sorted(task_resource_groups.items(), key=lambda item: (item[0][0], item[0][3])): # Sort by project, then sequence
-                    assigned_days = sorted([day_info['day'] for day_info in days_info])
-                    if not assigned_days: continue
-
-                    task_start_day_index = assigned_days[0] - 1
-                    task_end_day_index = assigned_days[-1] - 1
-
-                    # Ensure the index is within the bounds of DAYS
-                    if 0 <= task_start_day_index < len(DAYS) and 0 <= task_end_day_index < len(DAYS):
-                        task_start_day_name = DAYS[task_start_day_index]
-                        task_end_day_name = DAYS[task_end_day_index]
-
-                        # Find the actual date for the first and last day of the task
-                        first_assignment_date = None
-                        last_assignment_date = None
-                        sorted_assignment_days = sorted([item['Día'] for item in schedule_data if item['Proyecto'] == proj and item['Tarea'] == task and item['Recurso'] == resource])
-
-                        if sorted_assignment_days:
-                            start_day_num = sorted_assignment_days[0]
-                            end_day_num = sorted_assignment_days[-1]
-                            first_assignment_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=start_day_num - 1)
-                            last_assignment_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=end_day_num)
-
-
-                        if first_assignment_date and last_assignment_date:
-                            total_hours = sum(d['hours'] for d in days_info)
-                            gantt_data.append(dict(
-                                Task=f"[{seq}] {proj} - {task}", # Incluir secuencia en nombre
-                                Start=first_assignment_date.strftime("%Y-%m-%d"),
-                                Finish=last_assignment_date.strftime("%Y-%m-%d"),
-                                Resource=resource,
-                                Hours=round(total_hours,1)
-                            ))
-
-                if gantt_data:
-                    gantt_df = pd.DataFrame(gantt_data)
-                    fig = px.timeline(gantt_df, x_start="Start", x_end="Finish", y="Task",
-                                        color="Resource", hover_data=["Resource", "Hours"],
-                                        title="Planificación Estimada por Tarea y Recurso")
-                    fig.update_yaxes(categoryorder='array', categoryarray=sorted(gantt_df['Task'].unique())) # Ordenar por secuencia/nombre
-                    fig.update_layout(xaxis_title="Fecha", yaxis_title="[Secuencia] Proyecto - Tarea")
-                    st.plotly_chart(fig, use_container_width=True)
+        fig_proj = px.timeline(
+            df_gantt_proj, x_start="Inicio", x_end="Fin", y="Tarea", color="Recurso",
+            title=f"Ejecutando tareas en paralelo - {proyecto_seleccionado}"
+        )
+        fig_proj.update_yaxes(categoryorder='total ascending')
+        st.plotly_chart(fig_proj, use_container_width=True)
+    
+    # Mostrar asignaciones detalladas
+    # Necesita start_date y task_completion_days para ser preciso,
+    # o basarse solo en las asignaciones de 'assignment' (menos preciso para duración)
+    if assignment: # Solo mostrar si hay asignaciones
+        st.subheader("📈 Diagrama de Gantt (Estimado por Asignación)")
+        try:
+            gantt_data = []
+            gantt_start_date = st.session_state.get('last_run_start_date', date.today())
+            # Necesitamos la fecha de inicio usada por el modelo
+            # start_date = st.session_state.get('last_run_start_date', date.today()) # Obtener de la nueva clave
+            start_day = date.today() # Usar hoy como fecha de inicio por defecto
+            # Agrupar por tarea y recurso para encontrar inicio/fin de bloques de trabajo
+            if df is None: # Regenerar df si no se creó para la tabla por algún error previo
+                schedule_data = []
+                for (proj, task, resource, day), hours in assignment.items():
+                    if hours > 0.01:
+                        schedule_data.append({
+                                "Proyecto": proj, "Tarea": task, "Recurso": resource,
+                                "Día Num.": day, "Horas": round(hours, 2)
+                            })
+                if schedule_data:
+                      df_gantt = pd.DataFrame(schedule_data)
                 else:
-                    st.info("No hay datos suficientes para generar el diagrama de Gantt.")
+                      st.info("No hay datos de asignación para generar el Gantt.")
+                      return # Salir si no hay datos
+            else:
+                 df_gantt = df.copy() # Usar df de la tabla si existe
 
+            df_gantt["Fecha"] = df_gantt["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
 
-        else: # last_run_success == False
-            st.error("La última ejecución de la planificación falló. Revisa los mensajes de error, los datos de entrada o el `model.py`.")
+            task_resource_groups = df_gantt.groupby(['Proyecto', 'Tarea', 'Recurso'])
+
+            for name, group in task_resource_groups:
+                proj, task, resource = name
+                start_day_np = group['Día Num.'].min()
+                end_day_np = group['Día Num.'].max()
+                total_hours = group['Horas'].sum()
+
+                start_day_int = int(start_day_np)
+                end_day_int = int(end_day_np)
+
+                task_start_date = gantt_start_date + timedelta(days=start_day_int - 1)
+                task_end_date = gantt_start_date + timedelta(days=end_day_int - 1)
+
+                gantt_data.append(dict(
+                    Project = proj,
+                    Task=f"{proj} - {task}", # Usar nombre combinado
+                    Start=task_start_date.strftime("%Y-%m-%d"),
+                    Finish=task_end_date.strftime("%Y-%m-%d"),
+                    Resource=resource,
+                    Hours=round(total_hours,1)
+                 ))
+
+            if gantt_data:
+                 gantt_df_final = pd.DataFrame(gantt_data)
+                 fig = px.timeline(gantt_df_final, x_start="Start", x_end="Finish", y="Task",
+                                  color="Project",
+                                  hover_data=["Resource", "Hours","Task"],
+                                  title="Planificación Temporal Estimada",
+                                  labels={"Task": "Proyecto - Tarea"}
+                                  )
+                 fig.update_yaxes(categoryorder='total ascending')
+                 fig.update_layout(xaxis_title="Fecha", yaxis_title="Tarea")
+                 st.plotly_chart(fig, use_container_width=True)
+            else:
+                 st.info("No se pudo generar datos para el diagrama de Gantt.")
+
+        except Exception as e:
+            st.warning(f"No se pudo generar el diagrama de Gantt: {str(e)}")
+            st.error(traceback.format_exc()) # Descomentar para debug detallado
