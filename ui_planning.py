@@ -238,6 +238,27 @@ def show_results():
         st.info("No hay datos de asignación disponibles.")
 
     # --- Diagrama de Gantt ---
+    # --- Visualización Detallada por Recurso ---
+    if df is not None and not df.empty:
+        st.subheader("🛠 Visualización por Recurso")
+
+        recurso_seleccionado = st.selectbox("Selecciona un recurso:", df["Recurso"].unique())
+
+        df_recurso = df[df["Recurso"] == recurso_seleccionado].copy()
+        df_recurso["Fecha"] = df_recurso["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
+
+        fig_barras = px.bar(
+            df_recurso,
+            x="Fecha",
+            y="Horas",
+            color="Proyecto",
+            hover_data=["Tarea"],
+            title=f"Horas asignadas por día para el recurso: {recurso_seleccionado}"
+        )
+        fig_barras.update_layout(xaxis_title="Fecha", yaxis_title="Horas asignadas")
+        st.plotly_chart(fig_barras, use_container_width=True)
+        
+    # Mostrar asignaciones detalladas
     # Necesita start_date y task_completion_days para ser preciso,
     # o basarse solo en las asignaciones de 'assignment' (menos preciso para duración)
     if assignment: # Solo mostrar si hay asignaciones

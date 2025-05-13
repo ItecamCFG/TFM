@@ -8,7 +8,7 @@ from datetime import date, timedelta
 
 # Asegúrate que las rutas sean correctas según tu estructura
 from .base_model import OptimizationModel
-from data_models import OptimizationResult
+from .data_models import OptimizationResult
 
 # Helper para codificación binaria de enteros (igual que antes)
 def integer_to_binary(label, max_value, prefix="int_"):
