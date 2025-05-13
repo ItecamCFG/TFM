@@ -258,6 +258,34 @@ def show_results():
         fig_barras.update_layout(xaxis_title="Fecha", yaxis_title="Horas asignadas")
         st.plotly_chart(fig_barras, use_container_width=True)
         
+        st.subheader("🧱 Visualización por Proyecto")
+
+        proyecto_seleccionado = st.selectbox("Selecciona un proyecto:", df["Proyecto"].unique(), key="project_gantt_selector")
+        df_proyecto = df[df["Proyecto"] == proyecto_seleccionado].copy()
+        df_proyecto["Fecha"] = df_proyecto["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
+
+        # Agrupamos por tarea para obtener inicio y fin
+        gantt_data = []
+        for tarea, grupo in df_proyecto.groupby("Tarea"):
+            start = grupo["Fecha"].min()
+            end = grupo["Fecha"].max()
+            recurso = grupo["Recurso"].iloc[0]
+            gantt_data.append({
+                "Tarea": tarea,
+                "Inicio": start,
+                "Fin": end,
+                "Recurso": recurso
+            })
+
+        df_gantt_proj = pd.DataFrame(gantt_data)
+
+        fig_proj = px.timeline(
+            df_gantt_proj, x_start="Inicio", x_end="Fin", y="Tarea", color="Recurso",
+            title=f"Ejecutando tareas en paralelo - {proyecto_seleccionado}"
+        )
+        fig_proj.update_yaxes(categoryorder='total ascending')
+        st.plotly_chart(fig_proj, use_container_width=True)
+    
     # Mostrar asignaciones detalladas
     # Necesita start_date y task_completion_days para ser preciso,
     # o basarse solo en las asignaciones de 'assignment' (menos preciso para duración)
