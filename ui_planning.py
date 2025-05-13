@@ -243,7 +243,7 @@ def show_results():
         st.subheader("🛠 Visualización por Recurso")
 
         recurso_seleccionado = st.selectbox("Selecciona un recurso:", df["Recurso"].unique())
-
+        gantt_start_date = st.session_state.get('last_run_start_date', date.today())
         df_recurso = df[df["Recurso"] == recurso_seleccionado].copy()
         df_recurso["Fecha"] = df_recurso["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
 
