@@ -14,6 +14,11 @@
             "id": "proj_9b06b026",
             "name": "Chatbot PRL",
             "deadline": "2025-06-17"
+        },
+        {
+            "id": "proj_452b1d0c",
+            "name": "Proyecto Prueba",
+            "deadline": "2025-06-12"
         }
     ],
     "tasks": [
@@ -88,6 +93,38 @@
             "hours": 10,
             "expertise": "Junior",
             "sequence": 2
+        },
+        {
+            "id": "task_ee1cc241",
+            "project_id": "proj_452b1d0c",
+            "name": "Tarea 01",
+            "hours": 20,
+            "expertise": "Junior",
+            "sequence": 1
+        },
+        {
+            "id": "task_0e62d45c",
+            "project_id": "proj_452b1d0c",
+            "name": "Tarea 02",
+            "hours": 15,
+            "expertise": "Senior",
+            "sequence": 2
+        },
+        {
+            "id": "task_146e6843",
+            "project_id": "proj_452b1d0c",
+            "name": "Tarea 03",
+            "hours": 15,
+            "expertise": "Junior",
+            "sequence": 3
+        },
+        {
+            "id": "task_10f84e0f",
+            "project_id": "proj_452b1d0c",
+            "name": "Tarea 04",
+            "hours": 10,
+            "expertise": "Junior",
+            "sequence": 4
         }
     ],
     "resources": [

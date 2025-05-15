@@ -6,6 +6,9 @@ import plotly.express as px
 from datetime import date, timedelta, datetime
 import traceback
 import time
+from optimization.model_diagnostics import generate_model_diagnostics
+from visualization.aux_visualizations import * # Importar funciones de visualización
+
 
 # --- Importar Clases ---
 # Asegúrate que las rutas sean correctas según tu estructura
@@ -118,6 +121,8 @@ def display_planning():
             # 2. Crear Input del Modelo (validando dentro)
             with st.status("⚙️ Preparando y validando datos...", expanded=False) as status:
                  input_data = get_optimization_input(app_data, config)
+                 st.session_state['input_data'] = input_data # Guardar el input_data en la sesión
+
                  status.update(label="✅ Datos listos", state="complete")
 
             # 3. Instanciar y Resolver
@@ -131,11 +136,16 @@ def display_planning():
                  spinner_msg += f" (Límite: {time_limit}s)"
 
             with st.spinner(spinner_msg):
+                # Aquí puedes usar un contexto de progreso si es necesario
+                generate_model_diagnostics(model_instance) # Generar diagnóstico del modelo
+                # st.markdown(f"`Tipo del solver`: `{type(model_instance.model)}`") # DEBUG
+                # Llamar a la función de optimización
                 result = model_instance.solve() # Llamar al método solve del objeto
-
+            
             # 4. Guardar Resultado y la Fecha de Inicio USADA
             st.session_state['last_result'] = result # <-- GUARDAR EL OBJETO RESULTADO
             st.session_state['last_run_start_date'] = input_data.config.start_date # <-- GUARDAR LA FECHA DE INICIO USADA
+            st.session_state['availability_numeric'] = model_instance.availability_numeric # Guardar la disponibilidad numérica
             st.success("✅ Optimización finalizada.")
 
         except ValueError as ve: # Capturar errores de validación de datos
@@ -156,7 +166,6 @@ def display_planning():
     show_results()
 
 
-# --- Función para Mostrar Resultados (Adaptada) ---
 def show_results():
     """Muestra los resultados de la planificación leyendo de st.session_state."""
     if 'last_result' not in st.session_state:
@@ -164,195 +173,93 @@ def show_results():
         return
 
     st.divider()
-    st.subheader("📊 Resultados de la Planificación")
+    st.header("📊 Resultados de la Planificación")
 
     result = st.session_state['last_result']
 
-    # Mostrar Estado y Mensajes de Error/Advertencia
+    # Estado de ejecución
     if result.status == "Optimal":
         st.success(f"Solución Óptima encontrada en {result.solver_runtime:.2f}s.")
     elif result.status == "Timelimit":
-        st.warning(f"Límite de tiempo alcanzado ({result.solver_runtime:.2f}s). Mostrando la mejor solución encontrada (puede no ser óptima).")
-    elif result.status == "Feasible" or result.status == "Feasible (Validation Pending)":
-         st.success(f"Solución factible encontrada por Neal en {result.solver_runtime:.2f}s.")
-         if "Validation Pending" in result.status:
-              st.warning("⚠️ **Importante:** La validez de esta solución QUBO no ha sido comprobada contra las restricciones originales.")
+        st.warning(f"Límite de tiempo alcanzado ({result.solver_runtime:.2f}s). Mostrando la mejor solución encontrada.")
+    elif result.status.startswith("Feasible"):
+        st.success(f"Solución factible encontrada en {result.solver_runtime:.2f}s.")
+        if "Validation Pending" in result.status:
+            st.warning("⚠️ Solución QUBO no validada contra todas las restricciones.")
     elif "Error" in result.status:
-         st.error(f"Falló la ejecución: {result.status}")
-         if result.error_message:
-              st.code(result.error_message)
-         return # No mostrar más si hubo error grave
+        st.error(f"Falló la ejecución: {result.status}")
+        if result.error_message:
+            st.code(result.error_message)
+        return
     elif result.status == "Infeasible":
-         st.error("El modelo resultó ser infactible. Revisa los datos y restricciones.")
-         return
-    else: # Not Run, etc.
-         st.info(f"Estado del solver: {result.status}")
-         # return # Podrías salir aquí o intentar mostrar lo que haya
+        st.error("El modelo resultó infactible. Revisa los datos y restricciones.")
+        return
+    else:
+        st.info(f"Estado del solver: {result.status}")
 
-    # --- Métricas Principales ---
+    # Métricas
     col1, col2, col3 = st.columns(3)
     with col1:
-        if result.makespan is not None:
-             st.metric("Makespan Estimado", f"{result.makespan:.0f} días")
-        else:
-             st.metric("Makespan Estimado", "N/A")
+        st.metric("Makespan Estimado", f"{result.makespan:.0f} días" if result.makespan is not None else "N/A")
     with col2:
-        # El coste total se debe calcular en _extract_results si se quiere mostrar
-        if result.total_cost is not None:
-             st.metric("Coste Total Estimado", f"€ {result.total_cost:.2f}")
-        else:
-             st.metric("Coste Total Estimado", "N/A")
+        pass #st.metric("Coste Total Estimado", f"€ {result.total_cost:.2f}" if result.total_cost is not None else "N/A")
     with col3:
-         # Mostrar energía para Neal? O runtime?
-         st.metric("Tiempo del Solver", f"{result.solver_runtime:.2f}s")
-         # metadata = st.session_state.get('model_metadata', {}) # Ya no necesario si info está en result
-         # st.metric("Días Planificados", metadata.get('planning_horizon', 'N/A'))
+        st.metric("Tiempo del Solver", f"{result.solver_runtime:.2f}s")
 
-
-    # --- Tabla de Asignaciones ---
+    # Datos de asignación
     assignment = result.assignment
-    df = None
-    if assignment:
-        st.subheader("🗓 Asignaciones Detalladas")
-        try:
-            schedule_data = []
-            for (proj, task, resource, day), hours in assignment.items():
-                 if hours > 0.01: # Filtrar asignaciones mínimas
-                      schedule_data.append({
-                           "Proyecto": proj, "Tarea": task, "Recurso": resource,
-                           "Día Num.": day, "Horas": round(hours, 2)
-                       })
-            if schedule_data:
-                 df = pd.DataFrame(schedule_data)
-                 st.dataframe(
-                     df.sort_values(by=["Proyecto", "Día Num."]),
-                     use_container_width=True,
-                     hide_index=True
-                 )
-            else:
-                 st.info("No se encontraron asignaciones significativas en la solución.")
-        except Exception as e:
-            st.error(f"Error al procesar asignaciones para la tabla: {e}")
-            df = None # Asegurar que df es None si falla
-    else:
+    if not assignment:
         st.info("No hay datos de asignación disponibles.")
+        return
 
-    # --- Diagrama de Gantt ---
-    # --- Visualización Detallada por Recurso ---
-    if df is not None and not df.empty:
-        st.subheader("🛠 Visualización por Recurso")
+    schedule_data = [
+        {"Proyecto": p, "Tarea": t, "Recurso": r, "Día Num.": d, "Horas": round(h, 2)}
+        for (p, t, r, d), h in assignment.items() if h > 0.01
+    ]
+    df = pd.DataFrame(schedule_data)
 
-        recurso_seleccionado = st.selectbox("Selecciona un recurso:", df["Recurso"].unique())
-        gantt_start_date = st.session_state.get('last_run_start_date', date.today())
-        df_recurso = df[df["Recurso"] == recurso_seleccionado].copy()
-        df_recurso["Fecha"] = df_recurso["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
+    # Mapear expertise
+    resource_expertise_map = {
+        r.get("name", "Desconocido"): r.get("expertise", "Desconocido")
+        for r in st.session_state.get("app_data", {}).get("resources", [])
+    }
+    df["Expertise"] = df["Recurso"].map(resource_expertise_map).fillna("Desconocido")
 
-        fig_barras = px.bar(
-            df_recurso,
-            x="Fecha",
-            y="Horas",
-            color="Proyecto",
-            hover_data=["Tarea"],
-            title=f"Horas asignadas por día para el recurso: {recurso_seleccionado}"
-        )
-        fig_barras.update_layout(xaxis_title="Fecha", yaxis_title="Horas asignadas")
-        st.plotly_chart(fig_barras, use_container_width=True)
-        
-        st.subheader("🧱 Visualización por Proyecto")
+    # Visualizaciones
+    gantt_start_date = st.session_state.get('last_run_start_date', date.today())
 
-        proyecto_seleccionado = st.selectbox("Selecciona un proyecto:", df["Proyecto"].unique(), key="project_gantt_selector")
-        df_proyecto = df[df["Proyecto"] == proyecto_seleccionado].copy()
-        df_proyecto["Fecha"] = df_proyecto["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
+    # 1. Visualización por recurso
+    st.subheader("🛠 Visualización por Recurso")
+    recurso_seleccionado = st.selectbox("Selecciona un recurso:", df["Recurso"].unique(), key="select_recurso_principal")
+    plot_resource_bar(df, recurso_seleccionado, gantt_start_date)
 
-        # Agrupamos por tarea para obtener inicio y fin
-        gantt_data = []
-        for tarea, grupo in df_proyecto.groupby("Tarea"):
-            start = grupo["Fecha"].min()
-            end = grupo["Fecha"].max()
-            recurso = grupo["Recurso"].iloc[0]
-            gantt_data.append({
-                "Tarea": tarea,
-                "Inicio": start,
-                "Fin": end,
-                "Recurso": recurso
-            })
+    # 2. Heatmap de recursos
+    st.subheader("📊 Diagrama de ocupación de recursos")
+    plot_resource_day_heatmap(df,key_prefix="Ocupacion")
 
-        df_gantt_proj = pd.DataFrame(gantt_data)
+    # 3. Diagrama de ocupación por recurso
+    st.subheader("📋 Métricas de ocupación por recurso")
+    availability_numeric = st.session_state.get('availability_numeric', {})
+    show_idle_capacity(df, availability_numeric, makespan=result.makespan)
 
-        fig_proj = px.timeline(
-            df_gantt_proj, x_start="Inicio", x_end="Fin", y="Tarea", color="Recurso",
-            title=f"Ejecutando tareas en paralelo - {proyecto_seleccionado}"
-        )
-        fig_proj.update_yaxes(categoryorder='total ascending')
-        st.plotly_chart(fig_proj, use_container_width=True)
-    
-    # Mostrar asignaciones detalladas
-    # Necesita start_date y task_completion_days para ser preciso,
-    # o basarse solo en las asignaciones de 'assignment' (menos preciso para duración)
-    if assignment: # Solo mostrar si hay asignaciones
-        st.subheader("📈 Diagrama de Gantt (Estimado por Asignación)")
-        try:
-            gantt_data = []
-            gantt_start_date = st.session_state.get('last_run_start_date', date.today())
-            # Necesitamos la fecha de inicio usada por el modelo
-            # start_date = st.session_state.get('last_run_start_date', date.today()) # Obtener de la nueva clave
-            start_day = date.today() # Usar hoy como fecha de inicio por defecto
-            # Agrupar por tarea y recurso para encontrar inicio/fin de bloques de trabajo
-            if df is None: # Regenerar df si no se creó para la tabla por algún error previo
-                schedule_data = []
-                for (proj, task, resource, day), hours in assignment.items():
-                    if hours > 0.01:
-                        schedule_data.append({
-                                "Proyecto": proj, "Tarea": task, "Recurso": resource,
-                                "Día Num.": day, "Horas": round(hours, 2)
-                            })
-                if schedule_data:
-                      df_gantt = pd.DataFrame(schedule_data)
-                else:
-                      st.info("No hay datos de asignación para generar el Gantt.")
-                      return # Salir si no hay datos
-            else:
-                 df_gantt = df.copy() # Usar df de la tabla si existe
 
-            df_gantt["Fecha"] = df_gantt["Día Num."].apply(lambda d: gantt_start_date + timedelta(days=d - 1))
 
-            task_resource_groups = df_gantt.groupby(['Proyecto', 'Tarea', 'Recurso'])
 
-            for name, group in task_resource_groups:
-                proj, task, resource = name
-                start_day_np = group['Día Num.'].min()
-                end_day_np = group['Día Num.'].max()
-                total_hours = group['Horas'].sum()
+    # 4. Gantt por proyecto
+    st.subheader("🧱 Visualización por Proyecto")
+    proyecto_seleccionado = st.selectbox("Selecciona un proyecto:", df["Proyecto"].unique(), key="select_proyecto_gantt")
+    plot_project_gantt(df, proyecto_seleccionado, gantt_start_date)
 
-                start_day_int = int(start_day_np)
-                end_day_int = int(end_day_np)
+    # 5. Resumen por proyecto con gráfico de barras
+    st.subheader("📊 Carga total por proyecto y recurso")
+    plot_summary_by_project(df, resource_expertise_map, key_prefix="summary")
 
-                task_start_date = gantt_start_date + timedelta(days=start_day_int - 1)
-                task_end_date = gantt_start_date + timedelta(days=end_day_int - 1)
+    # 6. Gantt global estimado
+    st.subheader("📈 Diagrama de Gantt (Estimado por Asignación)")
+    plot_assignment_gantt(df, gantt_start_date)
 
-                gantt_data.append(dict(
-                    Project = proj,
-                    Task=f"{proj} - {task}", # Usar nombre combinado
-                    Start=task_start_date.strftime("%Y-%m-%d"),
-                    Finish=task_end_date.strftime("%Y-%m-%d"),
-                    Resource=resource,
-                    Hours=round(total_hours,1)
-                 ))
+    return df.groupby("Proyecto").agg({"Horas": "sum"}).reset_index()
 
-            if gantt_data:
-                 gantt_df_final = pd.DataFrame(gantt_data)
-                 fig = px.timeline(gantt_df_final, x_start="Start", x_end="Finish", y="Task",
-                                  color="Project",
-                                  hover_data=["Resource", "Hours","Task"],
-                                  title="Planificación Temporal Estimada",
-                                  labels={"Task": "Proyecto - Tarea"}
-                                  )
-                 fig.update_yaxes(categoryorder='total ascending')
-                 fig.update_layout(xaxis_title="Fecha", yaxis_title="Tarea")
-                 st.plotly_chart(fig, use_container_width=True)
-            else:
-                 st.info("No se pudo generar datos para el diagrama de Gantt.")
-
-        except Exception as e:
-            st.warning(f"No se pudo generar el diagrama de Gantt: {str(e)}")
-            st.error(traceback.format_exc()) # Descomentar para debug detallado
+if __name__ == "__main__":
+    # Solo para pruebas locales, no se ejecuta en Streamlit
+    display_planning() # Descomentar para pruebas locales

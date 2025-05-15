@@ -23,7 +23,7 @@ class NealMakespanModel(OptimizationModel):
     def _build_model(self):
         """Construye el modelo QUBO (BQM) para minimizar makespan."""
         print("DEBUG QUBO: Construyendo modelo BQM...")
-        # Asumimos que _prepare_common_data() se llamó y pobló los atributos necesarios
+        # Asegúrate de que _prepare_common_data se ejecutó antes
         if not hasattr(self, 'days_list') or not self.days_list:
             raise ValueError("days_list no disponible. Asegúrate que _prepare_common_data se ejecutó.")
 
@@ -111,6 +111,14 @@ class NealMakespanModel(OptimizationModel):
         P_MEDIUM = 2.0 * P_BASE
         P_LOW = 0.5 * P_BASE
         P_OBJECTIVE = 1.0 # Peso del makespan en el objetivo
+        
+        # Penalizaciones específicas por tipo de restricción
+        P_LINK = 5.0 * P_BASE
+        P_HOURS_TOTAL = 8.0 * P_BASE
+        P_AVAIL = 8.0 * P_BASE
+        P_SEQ = 10.0 * P_BASE
+        P_DEADLINE = 15.0 * P_BASE
+        P_MAKE_DEF = 10.0 * P_BASE
 
         # --- BQM Principal ---
         bqm = dimod.BinaryQuadraticModel('BINARY')
