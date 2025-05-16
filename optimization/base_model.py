@@ -41,7 +41,7 @@ class OptimizationModel(ABC):
 
         # 1. Mapeos básicos de objetos
         self.project_dict = {p.id: p for p in self.input_data.projects}
-        self.task_dict = {t.id: t for t in self.input_data.tasks} # Asume que Task tiene un 'id'
+        self.task_dict = {t.id_task: t for t in self.input_data.tasks} # Asume que Task tiene un 'id'
         self.resource_dict = {r.name: r for r in self.input_data.resources}
 
         self.project_names = [p.name for p in self.input_data.projects]

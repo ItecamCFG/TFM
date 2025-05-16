@@ -92,7 +92,7 @@ class NealMakespanModel(OptimizationModel):
         all_model_binary_vars.extend(makespan_vars_bits.values())
         # ... (print de debug)
 
-        # work_day (como tu antigua 'z', para enlazar y con end_day y secuencia)
+        # work_day, para enlazar y con end_day y secuencia)
         work_day_vars = {}
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p,[]):
@@ -188,121 +188,188 @@ class NealMakespanModel(OptimizationModel):
                 bqm.update(P_AVAIL * (A_rd - sum_y_rd - slack_expr)**2)
 
 
-        # 6. Enlace y -> WorkDay: y_sum_per_day <= M_total_daily_task * WorkDay
-        # Si sum(y[p,t,r,d] for r) > 0 entonces WorkDay[p,t,d] = 1
-        print("DEBUG QUBO: Formulando P: link y-WorkDay...")
+         # 6. Enlace y -> WorkDay: y_sum_per_day <= M_total_daily_task * WorkDay
+        #    Es decir: sum_y_ptd - (max_y_sum_daily * work_day_var) <= 0
+        print("DEBUG QUBO: Formulando P: link y-WorkDay...") # Esta línea ya la tenías
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
                 for d in self.days_list:
-                    sum_y_ptd = dimod.quicksum(y_expressions[(p,t,r,d)] for r in self.resource_names)
-                    # Si sum_y_ptd > 0, WorkDay debe ser 1.
-                    # Penalizar sum_y_ptd * (1 - WorkDay) -> No, esto es lineal.
-                    # Necesitamos: work_day >= sum_y / M (aprox)
-                    # o work_day = 0 => sum_y = 0
-                    # (sum_y_ptd > 0) => work_day = 1
-                    # sum_y_ptd <= (M_daily * len(self.resource_names)) * work_day_vars[(p,t,d)]
-                    # Esta restricción es para que si work_day es 0, la suma de y sea 0.
-                    # Y si la suma de y es >0, work_day debe ser 1.
-                    max_y_sum_daily = M_daily * len(self.resource_names) # Teórico máximo de horas en una tarea en un día
+                    # work_day_vars[(p,t,d)] es la variable binaria WorkDay
+                    work_var = work_day_vars[(p,t,d)] 
+                    
+                    # max_y_sum_daily es el coeficiente Big-M para work_var en esta restricción
+                    max_y_sum_daily = M_daily * len(self.resource_names) 
+
+                    # Construimos la lista de (variable, coeficiente) para 'terms'
+                    current_constraint_terms = []
+                    
+                    # Añadimos los términos de sum_y_ptd
+                    # sum_y_ptd = dimod.quicksum(y_expressions[(p,t,r_loop,d)] for r_loop in self.resource_names)
+                    # y_expressions[(p,t,r_loop,d)] es una expresión lineal de la forma sum(coeff_j * bit_j)
+                    for r_loop in self.resource_names:
+                        y_expr_for_resource_day = y_expressions[(p,t,r_loop,d)]
+                        # El atributo .linear de una expresión de dimod es un diccionario {variable_obj: coefficient}
+                        for bit_variable, bit_coefficient in y_expr_for_resource_day.linear.items():
+                            current_constraint_terms.append((bit_variable, bit_coefficient))
+                            
+                    # Añadimos el término para work_var: (-max_y_sum_daily * work_var)
+                    current_constraint_terms.append((work_var, -max_y_sum_daily))
+                    
+                    # Añadimos la restricción de desigualdad lineal al BQM
+                    # La forma es: lb <= sum(terms) + constant_param <= ub
+                    # Queremos: sum(current_constraint_terms) <= 0
+                    # Esto significa: constant_param = 0, ub = 0.
+                    # lb usará el valor por defecto de la función (efectivamente -infinito).
                     bqm.add_linear_inequality_constraint(
-                        linear_terms=[(sum_y_ptd, 1.0), (work_day_vars[(p,t,d)], -max_y_sum_daily)],
-                        lagrange_multiplier=P_LINK,
-                        label=f"link_y_sum_workday_{p}_{t}_{d}",
-                        constant=0, # sum_y_ptd - max_y_sum_daily * work_day <= 0
-                        vartype=dimod.BINARY # Es una restricción sobre variables binarias
+                        terms=current_constraint_terms,             # Parámetro 'terms' con la lista de (var, coeff)
+                        lagrange_multiplier=P_LINK,                 # Tu coeficiente de penalización
+                        label=f"link_y_sum_workday_{p}_{t}_{d}",    # Etiqueta para la restricción
+                        constant=0,                                 # El término constante 'c' en sum(ax) + c <= ub
+                        ub=0                                        # El límite superior para la suma
+                        # 'lb' usará su valor por defecto.
+                        # 'penalization_method' usará su valor por defecto ('slack').
                     )
-                    # Alternativa más simple y directa (bit a bit)
-                    # for r in self.resource_names:
-                    #     for bit_y_var in y_vars_bits[(p,t,r,d)].values():
-                    #         bqm.update(P_LINK * bit_y_var * (1 - work_day_vars[(p,t,d)])) # Si y_bit=1 y WD=0, penaliza
-                    #         bqm.update(P_LINK * (1 - bit_y_var) * work_day_vars[(p,t,d)]) # Si y_bit=0 y WD=1, penaliza? No.
+                    # La línea original con 'linear_terms' y 'vartype' se elimina/reemplaza.
 
-
-        # 7. Definición EndDay: EndDay >= d si WorkDay=1
-        # EndDay - d + SlackEndDayDef = 0 (si WorkDay=1)
-        # (EndDay - d + SlackEndDayDef)^2 * WorkDay
-        # O la formulación Big-M: end_day >= d - M_days * (1 - work_day)
+        # 7. Definición EndDay: end_expr >= d - M_days_big_m * (1 - work_day_vars[(p,t,d)])
+        #   Reescrito como: end_expr - M_days_big_m * work_day_vars[(p,t,d)] + (M_days_big_m - d) >= 0
         print("DEBUG QUBO: Formulando P: definición EndDay...")
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
-                end_expr = end_day_expressions[(p,t)]
-                for d in self.days_list:
-                    # end_expr >= d * work_day_vars[(p,t,d)] -> No lineal con d si d no es 0/1
-                    # (end_expr - d + slack)^2 * work_day | si no work_day, no importa
-                    # Penalizar: (d - end_expr + slack_d_ge_end)^2 * work_day_vars[(p,t,d)]
-                    # Esto es complejo. Usemos la Big-M:
-                    # end_expr - d*work_day_vars[(p,t,d)] >= 0 (aproximado)
-                    # Más exacto: end_expr >= d - M_days_big_m * (1 - work_day_vars[(p,t,d)])
-                    # end_expr - d + M_days_big_m * (1 - work_day_vars[(p,t,d)]) >= 0
-                    # Convertir a igualdad con slack:
-                    # end_expr - d + M_days_big_m * (1 - work_day_vars[(p,t,d)]) - slack = 0
-                    slack_label = f"SlackEndDayDef_{p}_{t}_{d}"
-                    slack_expr, slack_bits = integer_to_binary(slack_label, self.M_days_big_m + max_day_val, prefix="")
-                    all_model_binary_vars.extend(slack_bits.values())
-                    self.variables.setdefault('end_day_def_slacks_bits', {})[(p,t,d)] = slack_bits
+                end_expr_pt = end_day_expressions[(p,t)] # Expresión lineal para EndDay(p,t)
+                for d_loop in self.days_list: # Renombrar 'd' para evitar confusión con el 'd' de la restricción original
+                    work_var_ptd = work_day_vars[(p,t,d_loop)] # Variable WorkDay(p,t,d_loop)
 
-                    term = end_expr - d + self.M_days_big_m * (1 - work_day_vars[(p,t,d)]) - slack_expr
-                    bqm.update(P_HIGH * term**2)
+                    current_constraint_terms = []
+                    # Términos de end_expr_pt
+                    for bit_var, bit_coeff in end_expr_pt.linear.items():
+                        current_constraint_terms.append((bit_var, bit_coeff))
 
+                    # Término de -M_days_big_m * work_var_ptd
+                    current_constraint_terms.append((work_var_ptd, -self.M_days_big_m))
 
-        # 8. Secuencialidad: EndDay[i] <= d-1 + M_days*(1 - WorkDay[i+1,d])
+                    # Constante de la restricción: M_days_big_m - d_loop
+                    constraint_constant = self.M_days_big_m - d_loop
+
+                    # Desigualdad: sum(terms) + constant_param >= lb
+                    # En nuestro caso: sum(current_constraint_terms) + constraint_constant >= 0
+                    bqm.add_linear_inequality_constraint(
+                        terms=current_constraint_terms,
+                        lagrange_multiplier=P_HIGH, # O P_LINK según la importancia
+                        label=f"EndDay_def_{p}_{t}_{d_loop}",
+                        constant=constraint_constant,
+                        lb=0 
+                        # ub usará su valor por defecto (efectivamente +infinito)
+                    )
+
+       # 8. Secuencialidad: end_i_expr <= (d_val - 1) + M_days_big_m * (1 - work_day_vars[(p, t_i_plus_1, d_val)])
+        #   Reescrito como: end_i_expr + M_days_big_m * work_day_vars[(p, t_i_plus_1, d_val)] - (M_days_big_m + d_val - 1) <= 0
         print("DEBUG QUBO: Formulando P: secuencia (Finish-to-Start)...")
-        for p in self.project_names:
+        for p_proj in self.project_names: # Renombrar p
             sorted_tasks = sorted(
-                self.tasks_per_project_name[p],
-                key=lambda t_name: self.task_info.get((p, t_name), {}).get('sequence', float('inf'))
+                self.tasks_per_project_name[p_proj],
+                key=lambda t_name: self.task_info.get((p_proj, t_name), {}).get('sequence', float('inf'))
             )
             for i in range(len(sorted_tasks) - 1):
                 t_i = sorted_tasks[i]
                 t_i_plus_1 = sorted_tasks[i+1]
-                end_i_expr = end_day_expressions[(p, t_i)]
+                end_i_expr_obj = end_day_expressions[(p_proj, t_i)] # Expresión lineal para EndDay(p,t_i)
 
-                for d_val in self.days_list:
-                    if d_val > 1:
-                        # end_i_expr <= (d_val - 1) + M_days_big_m * (1 - work_day_vars[(p, t_i_plus_1, d_val)])
-                        # (d_val - 1) + M_days_big_m * (1 - work_day_vars[...]) - end_i_expr = slack_seq
-                        slack_label = f"SlackSeq_{p}_{t_i}_{t_i_plus_1}_{d_val}"
-                        slack_expr, slack_bits = integer_to_binary(slack_label, self.M_days_big_m + max_day_val, prefix="")
-                        all_model_binary_vars.extend(slack_bits.values())
-                        self.variables.setdefault('sequence_slacks_bits', {})[(p,i,d_val)] = slack_bits
+                for d_val_loop in self.days_list: # Renombrar d_val
+                    if d_val_loop > 1:
+                        work_var_next_task = work_day_vars[(p_proj, t_i_plus_1, d_val_loop)]
 
-                        term = (d_val - 1) + self.M_days_big_m * (1 - work_day_vars[(p, t_i_plus_1, d_val)]) - end_i_expr - slack_expr
-                        bqm.update(P_SEQ * term**2)
-                    else: # d_val == 1
-                        if self.hours_required_dict.get((p,t_i),0) > 0:
-                            bqm.update(P_SEQ * work_day_vars[(p, t_i_plus_1, 1)]) # Penalizar si work_day es 1
+                        current_constraint_terms = []
+                        # Términos de end_i_expr_obj
+                        for bit_var, bit_coeff in end_i_expr_obj.linear.items():
+                            current_constraint_terms.append((bit_var, bit_coeff))
 
+                        # Término de M_days_big_m * work_var_next_task
+                        current_constraint_terms.append((work_var_next_task, self.M_days_big_m))
+
+                        # Constante de la restricción: -(M_days_big_m + d_val_loop - 1)
+                        constraint_constant = -(self.M_days_big_m + d_val_loop - 1)
+
+                        # Desigualdad: sum(terms) + constant_param <= ub
+                        bqm.add_linear_inequality_constraint(
+                            terms=current_constraint_terms,
+                            lagrange_multiplier=P_SEQ,
+                            label=f"Seq_{p_proj}_{t_i}_{t_i_plus_1}_{d_val_loop}",
+                            constant=constraint_constant,
+                            ub=0
+                            # lb usará su valor por defecto
+                        )
+                    else: # d_val_loop == 1
+                        if self.hours_required_dict.get((p_proj,t_i),0) > 0:
+                            # Penalizar si work_day_vars[(p, t_i_plus_1, 1)] es 1
+                            # Esto es work_day_var = 1. Es una restricción de igualdad, no de desigualdad directamente.
+                            # O puedes verlo como work_day_var <= 0 (si penalizas work_day_var = 1)
+                            # Si quieres penalizar work_day_vars[(p, t_i_plus_1, 1)] directamente,
+                            # bqm.add_variable(work_day_vars[(p, t_i_plus_1, 1)], P_SEQ) o
+                            # bqm.update(P_SEQ * work_day_vars[(p, t_i_plus_1, 1)]) sigue siendo válido.
+                            # O usando la función de restricción:
+                            # work_day_vars[(p, t_i_plus_1, 1)] <= 0
+                            bqm.add_linear_inequality_constraint(
+                                terms=[(work_day_vars[(p_proj, t_i_plus_1, 1)], 1)],
+                                lagrange_multiplier=P_SEQ,
+                                label=f"Seq_d1_{p_proj}_{t_i}_{t_i_plus_1}",
+                                constant=0,
+                                ub=0
+                            )
         # 9. Deadline: EndDay[p,t] <= D_p
-        # EndDay + SlackDL - D_p = 0
-        print("DEBUG QUBO: Formulando P: deadline (con slack)...")
+        print("DEBUG QUBO: Formulando P: deadline...") # Eliminado (con slack) del mensaje
         for project_data in self.input_data.projects:
             p_name = project_data.name
             deadline_date = project_data.deadline
             if deadline_date:
                 deadline_day_num = (deadline_date - self.start_date).days + 1
                 if 1 <= deadline_day_num <= max_day_val:
-                    for t in self.tasks_per_project_name.get(p_name,[]):
-                        end_expr = end_day_expressions[(p_name, t)]
-                        slack_label = f"SlackDL_{p_name}_{t}"
-                        # Max slack = deadline_day_num si end_expr debe ser <=
-                        # end_expr + slack = deadline_day_num
-                        slack_expr, slack_bits = integer_to_binary(slack_label, deadline_day_num, prefix="")
-                        all_model_binary_vars.extend(slack_bits.values())
-                        self.variables.setdefault('deadline_slacks_bits', {})[(p_name,t)] = slack_bits
-                        bqm.update(P_DEADLINE * (end_expr + slack_expr - deadline_day_num)**2)
+                    for t_task in self.tasks_per_project_name.get(p_name,[]): # Renombrar t
+                        end_expr_pt = end_day_expressions[(p_name, t_task)] # Expresión lineal
+
+                        current_constraint_terms = []
+                        for bit_var, bit_coeff in end_expr_pt.linear.items():
+                            current_constraint_terms.append((bit_var, bit_coeff))
+
+                        # Desigualdad: sum(terms) + constant_param <= ub
+                        # En nuestro caso: sum(current_constraint_terms) + 0 <= deadline_day_num
+                        bqm.add_linear_inequality_constraint(
+                            terms=current_constraint_terms,
+                            lagrange_multiplier=P_DEADLINE,
+                            label=f"Deadline_{p_name}_{t_task}",
+                            constant=0,
+                            ub=deadline_day_num
+                            # lb usará su valor por defecto
+                        )
+
 
         # 10. Makespan Definition: Makespan >= EndDay[p,t]
-        # Makespan - EndDay + SlackMK = 0
-        print("DEBUG QUBO: Formulando P: definición Makespan (con slack)...")
-        for p in self.project_names:
-            for t in self.tasks_per_project_name.get(p, []):
-                end_expr = end_day_expressions[(p, t)]
-                slack_label = f"SlackMK_{p}_{t}"
-                # Max slack = max_day_val
-                slack_expr, slack_bits = integer_to_binary(slack_label, max_day_val, prefix="")
-                all_model_binary_vars.extend(slack_bits.values())
-                self.variables.setdefault('makespan_def_slacks_bits', {})[(p,t)] = slack_bits
-                bqm.update(P_MAKE_DEF * (makespan_expr - end_expr + slack_expr)**2)
+        #    Reescrito como: makespan_expr - end_expr >= 0
+        print("DEBUG QUBO: Formulando P: definición Makespan...") # Eliminado (con slack)
+        for p_proj in self.project_names: # Renombrar p
+            for t_task in self.tasks_per_project_name.get(p_proj, []): # Renombrar t
+                end_expr_pt = end_day_expressions[(p_proj, t_task)] # Expresión lineal EndDay(p,t)
+                # makespan_expr ya es una expresión lineal global
+
+                current_constraint_terms = []
+                # Términos de makespan_expr
+                for bit_var, bit_coeff in self.variables['makespan_expr'].linear.items():
+                    current_constraint_terms.append((bit_var, bit_coeff))
+
+                # Términos de -end_expr_pt
+                for bit_var, bit_coeff in end_expr_pt.linear.items():
+                    current_constraint_terms.append((bit_var, -bit_coeff)) # Coeficiente negativo
+
+                # Desigualdad: sum(terms) + constant_param >= lb
+                # En nuestro caso: sum(current_constraint_terms) + 0 >= 0
+                bqm.add_linear_inequality_constraint(
+                    terms=current_constraint_terms,
+                    lagrange_multiplier=P_MAKE_DEF,
+                    label=f"MakespanDef_{p_proj}_{t_task}",
+                    constant=0,
+                    lb=0
+                    # ub usará su valor por defecto
+                )
 
         # --- Finalizar BQM ---
         # Asegurar que todas las variables binarias estén en el BQM

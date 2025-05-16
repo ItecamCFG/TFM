@@ -14,7 +14,7 @@ class Resource:
 
 @dataclass
 class Task:
-    id: str
+    id_task: str
     project_id: str
     name: str
     hours: float

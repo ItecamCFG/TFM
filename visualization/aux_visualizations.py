@@ -18,6 +18,7 @@ def plot_resource_day_heatmap(df, title="📅 Carga de recursos por día", key_p
 
     recursos = sorted(df["Recurso"].unique())
     dias = sorted(df["Día Num."].unique())
+ 
 
     # Construir matriz z (horas asignadas), y matriz de texto
     z = []
@@ -183,7 +184,7 @@ def plot_summary_by_project(df, resource_expertise_map=None, key_prefix="summary
 
 
 def plot_assignment_gantt(df: pd.DataFrame, start_date):
-    """Genera un diagrama de Gantt global combinando proyecto, tarea y recurso."""
+    """Genera un diagrama de Gantt global ordenado por proyecto."""
     if df.empty:
         st.info("No hay datos para el Gantt de asignaciones.")
         return
@@ -193,7 +194,7 @@ def plot_assignment_gantt(df: pd.DataFrame, start_date):
     gantt_data = []
     for (proj, tarea, recurso), grupo in df.groupby(["Proyecto", "Tarea", "Recurso"]):
         gantt_data.append({
-            "Task": f"{proj} - {tarea}",
+            "Task": f"{tarea}",
             "Start": grupo["Fecha"].min(),
             "Finish": grupo["Fecha"].max(),
             "Project": proj,
@@ -207,6 +208,10 @@ def plot_assignment_gantt(df: pd.DataFrame, start_date):
         st.info("No se pudo construir el diagrama de Gantt.")
         return
 
+    # 🧠 Ordenar manualmente por proyecto (agrupando visualmente)
+    df_gantt = df_gantt.sort_values(by=["Project", "Start", "Task"])
+    task_order = df_gantt["Task"].tolist()  # este es el orden deseado para el eje Y
+
     fig = px.timeline(
         df_gantt,
         x_start="Start",
@@ -216,9 +221,12 @@ def plot_assignment_gantt(df: pd.DataFrame, start_date):
         hover_data=["Resource", "Horas"],
         title="Planificación Temporal Estimada"
     )
-    fig.update_yaxes(categoryorder='total ascending')
+
+    # ✅ Aplicar orden manual al eje Y
+    fig.update_yaxes(categoryorder='array', categoryarray=task_order[::-1])  # Invertir para que primero aparezcan arriba
     fig.update_layout(xaxis_title="Fecha", yaxis_title="Tarea")
-    st.plotly_chart(fig, use_container_width=True,key="assignment_gantt_chart")
+    st.plotly_chart(fig, use_container_width=True, key="assignment_gantt_chart")
+
 
 
 
@@ -268,7 +276,7 @@ def show_idle_capacity(df_asignaciones: pd.DataFrame, availability_numeric: dict
         title="Porcentaje de Ocupación de cada Recurso"
     )
     fig.update_layout(xaxis_title="Porcentaje de Ocupación", yaxis_title="Recurso")
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, use_container_wth=True)
 
 
 
