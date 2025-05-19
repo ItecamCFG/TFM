@@ -1,0 +1,2 @@
+dataset_name,projects,tasks,resources,status,makespan,solver_runtime,run_timestamp
+manual_dataset,4,13,5,Solution Found (Unknown Status Code: optimal),18.0,32.86,2025-05-19 14:01:23

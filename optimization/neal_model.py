@@ -20,6 +20,13 @@ def integer_to_binary(label, max_value, prefix="int_"):
 class NealMakespanModel(OptimizationModel):
     """Minimiza Makespan usando Neal Simulated Annealing (QUBO)."""
 
+    def __init__(self, input_data):
+        super().__init__(input_data)
+        self.model = None
+        self.sampleset = None
+        self.variables = {}
+        self.M_days_big_m = None
+
     def _build_model(self):
         """Construye el modelo QUBO (BQM) para minimizar makespan."""
         print("DEBUG QUBO: Construyendo modelo BQM...")

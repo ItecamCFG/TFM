@@ -6,7 +6,7 @@ import plotly.express as px
 from datetime import date, timedelta, datetime
 import traceback
 import time
-from optimization.model_diagnostics import generate_model_diagnostics
+from optimization.model_diagnostics import generate_model_diagnostics, generate_input_summary
 from visualization.aux_visualizations import * # Importar funciones de visualización
 
 
@@ -17,6 +17,7 @@ from optimization.base_model import OptimizationModel # Importar base si necesit
 from optimization.model_pulp import MakespanMinimizationPuLP
 from optimization.neal_model import NealMakespanModel
 from optimization.model_SCIP import MakespanMinimizationSCIP
+from utils import save_solver_result # Importar función para guardar resultados
 
 # --- Mapeo de Opciones a Clases ---
 MODEL_MAPPING = {
@@ -80,6 +81,7 @@ def display_planning():
     st.header("📅 Planificación y Resultados")
     # Obtener datos de la sesión (asume que tiene 'projects', 'tasks', 'resources')
     app_data = st.session_state.get('app_data', {})
+    # st.write("🔍 Debug - Contenido de app_data:", app_data)
 
     # Verificar datos mínimos requeridos
     if not app_data.get('projects') or not app_data.get('tasks') or not app_data.get('resources'):
@@ -129,6 +131,10 @@ def display_planning():
             SelectedModelClass = MODEL_MAPPING[model_choice]
             model_instance = SelectedModelClass(input_data)
 
+            if 'input_data' in st.session_state:
+                # Generar resumen de entrada
+                generate_input_summary(input_data)
+
             spinner_msg = f"🔍 Optimizando con {model_choice}..."
             if "Neal" in model_choice:
                  spinner_msg += " (Simulated Annealing)"
@@ -137,13 +143,17 @@ def display_planning():
 
             with st.spinner(spinner_msg):
                 # Aquí puedes usar un contexto de progreso si es necesario
-                generate_model_diagnostics(model_instance) # Generar diagnóstico del modelo
                 # st.markdown(f"`Tipo del solver`: `{type(model_instance.model)}`") # DEBUG
                 # Llamar a la función de optimización
+
                 result = model_instance.solve() # Llamar al método solve del objeto
+                dataset_name = st.session_state.get('dataset_name', 'manual_dataset')
+                save_solver_result(result, input_data, dataset_name=dataset_name) # Guardar resultados en CSV
+
             
             # 4. Guardar Resultado y la Fecha de Inicio USADA
             st.session_state['last_result'] = result # <-- GUARDAR EL OBJETO RESULTADO
+            st.session_state['last_model'] = model_instance # Guardar la instancia del modelo
             st.session_state['last_run_start_date'] = input_data.config.start_date # <-- GUARDAR LA FECHA DE INICIO USADA
             st.session_state['availability_numeric'] = model_instance.availability_numeric # Guardar la disponibilidad numérica
             st.success("✅ Optimización finalizada.")
@@ -176,6 +186,14 @@ def show_results():
     st.header("📊 Resultados de la Planificación")
 
     result = st.session_state['last_result']
+
+    if 'last_model' in st.session_state:
+        try:
+            st.subheader("🔍 Diagnóstico del modelo")
+            # st.write("🧪 DEBUG - Tipo de modelo:", type(st.session_state['last_model']))
+            generate_model_diagnostics(st.session_state['last_model'])
+        except Exception as diag_error:
+            st.warning(f"No se pudo generar el diagnóstico del modelo: {diag_error}")
 
     # Estado de ejecución
     if result.status == "Optimal":

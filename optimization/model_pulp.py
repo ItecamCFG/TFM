@@ -8,6 +8,10 @@ from datetime import date, timedelta
 class MakespanMinimizationPuLP(OptimizationModel):
     """Minimiza Makespan usando PuLP (basado en v5.1)."""
 
+    # Constructor
+    def __init__(self, input_data):
+        super().__init__(input_data)
+
     def _build_model(self):
         """Construye el modelo PuLP para minimizar makespan."""
         # Los datos ya están preparados en self.project_names, self.tasks_per_project_name, etc.

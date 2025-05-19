@@ -33,6 +33,11 @@ from datetime import date, timedelta
 class MakespanMinimizationSCIP(OptimizationModel):
     """Minimiza Makespan usando SCIP a través de PySCIPOpt."""
 
+    # Constructor de la clase padre
+    def __init__(self, input_data):
+        print("DEBUG (Init): Inicializando modelo SCIP...")
+        super().__init__(input_data)
+
     def _build_model(self):
         """Construye el modelo SCIP para minimizar makespan."""
         self.model = Model("Makespan_SCIP")
