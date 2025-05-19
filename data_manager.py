@@ -4,7 +4,7 @@ import pandas as pd
 import json
 import os
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 DATA_FILE = "app_data_v2.json" # Nuevo nombre para evitar conflictos
 DAYS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes"]
@@ -23,9 +23,67 @@ def get_initial_state():
     """Define la estructura inicial del estado v2."""
     return {
         'projects': [], # Lista de diccionarios de proyectos [{'id': '...', 'name': '...', 'deadline': 'YYYY-MM-DD'}]
-        'tasks': [], # Lista de diccs de tareas [{'id': '...', 'project_id': '...', 'name': '...', 'hours': ..., 'expertise': '...', 'sequence': ...}]
+        'tasks': [], # Lista de diccs de tareas [{'id_task': '...', 'project_id': '...', 'name': '...', 'hours': ..., 'expertise': '...', 'sequence': ...}]
         'resources': [] # Lista de diccs de recursos [{'name': '...', 'expertise': '...', 'cost': ..., 'Lunes': 8, ...}]
     }
+
+def import_excel_to_app_data(excel_file: str) -> dict:
+    """Importa un archivo Excel con hojas 'Proyectos', 'Tareas' y 'Recursos' al formato app_data."""
+    try:
+        xls = pd.ExcelFile(excel_file)
+        df_proj = pd.read_excel(xls, 'Proyectos')
+        df_tasks = pd.read_excel(xls, 'Tareas')
+        df_resources = pd.read_excel(xls, 'Recursos')
+
+        # --- Procesar Proyectos ---
+        projects = []
+        for _, row in df_proj.iterrows():
+            projects.append({
+                "id": str(row["ID Proyecto"]).strip(),
+                "name": str(row["Nombre Proyecto"]).strip(),
+                "deadline": datetime.strptime(str(row["Fecha Límite"]), "%Y-%m-%d").date() if not pd.isna(row["Fecha Límite"]) else None
+            })
+
+        # --- Procesar Tareas ---
+        tasks = []
+        for _, row in df_tasks.iterrows():
+            tasks.append({
+                "id_task": str(row["ID Tarea"]).strip(),
+                "project_id": str(row["ID Proyecto"]).strip(),
+                "name": str(row["Nombre Tarea"]).strip(),
+                "hours": float(row["Horas"]),
+                "expertise": str(row["Expertise"]).strip(),
+                "sequence": int(row["Secuencia"]) if not pd.isna(row["Secuencia"]) else 0
+            })
+
+        # --- Procesar Recursos ---
+        resources = []
+        for _, row in df_resources.iterrows():
+            expertise = str(row["Expertise"]).strip()
+            resource = {
+                "name": str(row["Nombre"]).strip(),
+                "expertise": expertise,
+                "cost": EXPERTISE_COSTS.get(expertise, 0)
+            }
+            # Añadir disponibilidad para Lunes a Viernes
+            for day in DAYS:
+                resource[day] = float(row[day]) if day in row and not pd.isna(row[day]) else 0.0
+            resources.append(resource)
+
+        return {
+            "projects": projects,
+            "tasks": tasks,
+            "resources": resources
+        }
+
+    except Exception as e:
+        st.error(f"Error al importar Excel: {e}")
+        return {
+            "projects": [],
+            "tasks": [],
+            "resources": []
+        }
+
 
 def load_data():
     """Carga los datos v2 desde el archivo JSON."""
