@@ -2,22 +2,22 @@
     "projects": [
         {
             "id": "proj_d1b5337d",
-            "name": "Configurador de mesas fotovoltaicas",
+            "name": "Mantenimiento Inteligente",
             "deadline": "2025-06-30"
         },
         {
             "id": "proj_c301f3ac",
-            "name": "Clustering Datos Comerciales",
+            "name": "SafeFactory",
             "deadline": "2025-07-31"
         },
         {
             "id": "proj_9b06b026",
-            "name": "Chatbot PRL",
+            "name": "LeanFlow",
             "deadline": "2025-06-17"
         },
         {
             "id": "proj_452b1d0c",
-            "name": "Proyecto Prueba",
+            "name": "Huella Cero",
             "deadline": "2025-06-12"
         }
     ],
@@ -25,7 +25,7 @@
         {
             "id_task": "task_35570710",
             "project_id": "proj_d1b5337d",
-            "name": "Simulacion CFDS",
+            "name": "Implantar sensores IoT en equipos críticos",
             "hours": 30.0,
             "expertise": "Junior",
             "sequence": 1
@@ -33,7 +33,7 @@
         {
             "id_task": "task_9aed5430",
             "project_id": "proj_d1b5337d",
-            "name": "Analisis datos",
+            "name": "Desarrollar modelos predictivos de fallo",
             "hours": 30.0,
             "expertise": "Junior",
             "sequence": 2
@@ -41,7 +41,7 @@
         {
             "id_task": "task_f5b24b85",
             "project_id": "proj_d1b5337d",
-            "name": "Entrenamiento red neuronal",
+            "name": "Integrar los datos en una plataforma de gestión (CMMS)",
             "hours": 20.0,
             "expertise": "Senior",
             "sequence": 3
@@ -49,7 +49,7 @@
         {
             "id_task": "task_08af2b7e",
             "project_id": "proj_d1b5337d",
-            "name": "Interfaz usuario",
+            "name": "Capacitar al personal de mantenimiento en uso del sistema",
             "hours": 20.0,
             "expertise": "Junior",
             "sequence": 4
@@ -57,7 +57,7 @@
         {
             "id_task": "task_7b224c9c",
             "project_id": "proj_c301f3ac",
-            "name": "Ingenieria datos",
+            "name": "Instalar sensores y dispositivos de proximidad",
             "hours": 30.0,
             "expertise": "Junior",
             "sequence": 1
@@ -65,7 +65,7 @@
         {
             "id_task": "task_9b725734",
             "project_id": "proj_c301f3ac",
-            "name": "Clustering y analisis resultados",
+            "name": "Implementar un sistema de alertas y parada automática",
             "hours": 30.0,
             "expertise": "Senior",
             "sequence": 2
@@ -73,7 +73,7 @@
         {
             "id_task": "task_fb1102e7",
             "project_id": "proj_c301f3ac",
-            "name": "Desarrollo interfaz",
+            "name": "Crear un dashboard de seguridad con reportes en tiempo real",
             "hours": 25.0,
             "expertise": "Junior",
             "sequence": 3
@@ -81,7 +81,7 @@
         {
             "id_task": "task_f82b3d4e",
             "project_id": "proj_9b06b026",
-            "name": "RAG Documentos",
+            "name": "Realizar un Value Stream Mapping (VSM)",
             "hours": 10.0,
             "expertise": "Senior",
             "sequence": 1
@@ -89,7 +89,7 @@
         {
             "id_task": "task_c9825590",
             "project_id": "proj_9b06b026",
-            "name": "Twilio Deploy",
+            "name": "Rediseñar el layout de la línea de producción",
             "hours": 10.0,
             "expertise": "Junior",
             "sequence": 2
@@ -97,7 +97,7 @@
         {
             "id_task": "task_ee1cc241",
             "project_id": "proj_452b1d0c",
-            "name": "Tarea 01",
+            "name": "Medir la huella de carbono actual de la planta",
             "hours": 20.0,
             "expertise": "Junior",
             "sequence": 1
@@ -105,7 +105,7 @@
         {
             "id_task": "task_0e62d45c",
             "project_id": "proj_452b1d0c",
-            "name": "Tarea 02",
+            "name": "Implementar sistemas de eficiencia energética",
             "hours": 15.0,
             "expertise": "Senior",
             "sequence": 2
@@ -113,7 +113,7 @@
         {
             "id_task": "task_146e6843",
             "project_id": "proj_452b1d0c",
-            "name": "Tarea 03",
+            "name": "Diseñar un plan de reducción de residuos industriales",
             "hours": 15.0,
             "expertise": "Junior",
             "sequence": 3
@@ -121,7 +121,7 @@
         {
             "id_task": "task_10f84e0f",
             "project_id": "proj_452b1d0c",
-            "name": "Tarea 04",
+            "name": "Auditar periódicamente los indicadores de sostenibilidad",
             "hours": 10.0,
             "expertise": "Junior",
             "sequence": 4
@@ -129,7 +129,27 @@
     ],
     "resources": [
         {
-            "name": "Carlos Muñoz",
+            "name": "Pedro Gómez",
+            "expertise": "Senior",
+            "cost": 45,
+            "Lunes": 8.0,
+            "Martes": 8.0,
+            "Miércoles": 8.0,
+            "Jueves": 8.0,
+            "Viernes": 8.0
+        },
+        {
+            "name": "Diego Vargas",
+            "expertise": "Senior",
+            "cost": 45,
+            "Lunes": 8.0,
+            "Martes": 8.0,
+            "Miércoles": 8.0,
+            "Jueves": 8.0,
+            "Viernes": 8.0
+        },
+        {
+            "name": "Laura Castillo",
             "expertise": "Junior",
             "cost": 30,
             "Lunes": 8.0,
@@ -139,17 +159,7 @@
             "Viernes": 8.0
         },
         {
-            "name": "Cristian Franco",
-            "expertise": "Senior",
-            "cost": 45,
-            "Lunes": 8.0,
-            "Martes": 8.0,
-            "Miércoles": 8.0,
-            "Jueves": 8.0,
-            "Viernes": 8.0
-        },
-        {
-            "name": "Emilio Arteaga",
+            "name": "Lucía Rivas",
             "expertise": "Junior",
             "cost": 30,
             "Lunes": 8.0,
@@ -159,19 +169,9 @@
             "Viernes": 8.0
         },
         {
-            "name": "Mario Calonge",
-            "expertise": "Senior",
-            "cost": 45,
-            "Lunes": 8.0,
-            "Martes": 8.0,
-            "Miércoles": 8.0,
-            "Jueves": 8.0,
-            "Viernes": 8.0
-        },
-        {
-            "name": "Sergio Jimenez",
-            "expertise": "Senior",
-            "cost": 45,
+            "name": "Clara Mendoza",
+            "expertise": "Junior",
+            "cost": 30,
             "Lunes": 8.0,
             "Martes": 8.0,
             "Miércoles": 8.0,
