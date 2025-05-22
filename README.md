@@ -76,7 +76,7 @@ Este prototipo es una **prueba de concepto** que se puede expandir y perfecciona
 - **Diversificar métricas** de optimización (tiempo total vs. coste total vs. tardanza).  
 - **Experimentar** con otros solvers (Gurobi, CPLEX, GLPK, etc.) y comparar rendimiento.  
 - **Desplegar una app web** con [Streamlit](https://streamlit.io/), permitiendo a usuarios no técnicos configurar y lanzar optimizaciones con un clic.  
-- **Integrar heurísticas** o metaheurísticas (e.g., algoritmos genéticos, búsqueda tabú) cuando la escala de datos se vuelve muy grande para la optimización exacta.
+- **Integrar heurísticas** o metaheurísticas (e.g., algoritmos genéticos, búsqueda tabú) cuando la escala de datos se vuelve muy grande para la optimización exacta. De hecho, la interfaz ya permite seleccionar un **algoritmo genético experimental** para minimizar el *makespan*.
 
 ---
 
