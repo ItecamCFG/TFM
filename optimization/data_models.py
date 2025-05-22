@@ -36,8 +36,9 @@ class Project:
 class OptimizationConfig:
     """Configuración para la ejecución del modelo."""
     start_date: date = field(default_factory=date.today)
-    planning_horizon_days: Optional[int] = None # Si se precalcula el num días
-    solver_time_limit: int = 300 # Segundos
+    planning_horizon_days: Optional[int] = None  # Si se precalcula el num días
+    solver_time_limit: int = 300  # Segundos
+    ga_params: Optional[Dict[str, Any]] = None  # Parámetros para el algoritmo genético
     # Añadir otros parámetros si son necesarios (ej: factor penalización si se usa)
 
 @dataclass

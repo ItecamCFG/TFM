@@ -17,13 +17,15 @@ from optimization.base_model import OptimizationModel # Importar base si necesit
 from optimization.model_pulp import MakespanMinimizationPuLP
 from optimization.neal_model import NealMakespanModel
 from optimization.model_SCIP import MakespanMinimizationSCIP
+from optimization.genetic_model import GeneticMakespanPlanner
 from utils import save_solver_result # Importar función para guardar resultados
 
 # --- Mapeo de Opciones a Clases ---
 MODEL_MAPPING = {
     "Minimizar Makespan (PuLP/CBC)": MakespanMinimizationPuLP,
-    "Minimizar Makespan (Neal QUBO)": NealMakespanModel, 
-    "Minimizar Makespan (PySCIPOpt)": MakespanMinimizationSCIP, 
+    "Minimizar Makespan (Neal QUBO)": NealMakespanModel,
+    "Minimizar Makespan (PySCIPOpt)": MakespanMinimizationSCIP,
+    "Minimizar Makespan (Genético)": GeneticMakespanPlanner,
 }
 
 # --- Constantes ---
