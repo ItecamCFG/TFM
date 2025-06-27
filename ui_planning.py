@@ -18,7 +18,7 @@ from optimization.model_pulp import MakespanMinimizationPuLP
 from optimization.neal_model import NealMakespanModel
 from optimization.model_SCIP import MakespanMinimizationSCIP
 from optimization.genetic_model import GeneticMakespanPlanner
-from utils import save_solver_result # Importar función para guardar resultados
+from utils import log_experiment # Importar función para guardar resultados
 
 # --- Mapeo de Opciones a Clases ---
 MODEL_MAPPING = {
@@ -91,19 +91,37 @@ def display_planning():
         return
 
     # --- Opciones de Configuración ---
-    col_solver, col_time = st.columns(2)
+    st.subheader("Configuración del Modelo")
+
+    col_solver, col_horizon = st.columns(2)
     with col_solver:
         model_choice = st.selectbox(
-            "**Modelo/Objetivo a Optimizar:**",
+            "**Modelo a Optimizar:**",
             options=list(MODEL_MAPPING.keys()),
-            index=0,
             key="model_choice_selectbox"
         )
-    with col_time:
-        # El límite de tiempo aplica a solvers MILP, Neal tiene 'num_reads'
-        # Podemos dejarlo aquí como referencia o hacerlo específico
-        time_limit = st.number_input("Límite Tiempo MILP (s) / Ref. Neal:", min_value=30, max_value=1200, value=300, step=30)
-        # num_reads = st.number_input("Número de Lecturas (Neal):", min_value=100, max_value=10000, value=1000, step=100)
+    
+    with col_horizon:
+        # --- AQUÍ ESTÁ EL CONTROL DEL HORIZONTE ---
+        horizon_days = st.number_input(
+            "Horizonte de Planificación (días)",
+            min_value=0,
+            max_value=365,
+            value=30,  # <-- ¡Puesto un valor por defecto sensato de 30 días!
+            help="Número de días a planificar. 0 para cálculo automático. Para QUBO, se recomienda un valor ajustado (ej. 30-40)."
+        )
+        # Convierte el 0 de la UI a None, que es lo que espera la lógica del modelo
+        planning_horizon_days = horizon_days if horizon_days > 0 else None
+
+    # Muestra las opciones específicas del solver de forma condicional
+    if "Neal" in model_choice:
+        # Si es Neal, muestra la opción de "lecturas"
+        num_reads = st.number_input("Número de Lecturas (Neal):", min_value=100, max_value=20000, value=1000, step=100)
+        time_limit = 300  # Un valor por defecto, ya que no se usa para Neal
+    else:
+        # Para otros solvers, muestra el límite de tiempo
+        time_limit = st.number_input("Límite de Tiempo (s):", min_value=10, max_value=1200, value=300, step=10)
+        num_reads = 1000  # Un valor por defecto, ya que no se usa para otros solvers
 
     start_date_option = st.date_input("Fecha de inicio de la planificación:", value=date.today())
 
@@ -111,15 +129,16 @@ def display_planning():
     if st.button(f"🚀 Ejecutar Planificación: {model_choice}", type="primary"):
         # Limpiar resultado anterior y fecha de inicio anterior
         st.session_state.pop('last_result', None)
-        st.session_state.pop('last_run_start_date', None) # Limpiar la fecha de inicio anterior
+        st.session_state.pop('last_run_start_date', None)
 
         try:
-            # 1. Crear Configuración
+            # 1. Crear Configuración (versión final y correcta)
+            # Ahora recoge todos los valores de los widgets de la UI
             config = OptimizationConfig(
                 start_date=start_date_option,
                 solver_time_limit=time_limit,
-                # Añadir num_reads si es configurable:
-                # num_reads=st.session_state.get('neal_num_reads', 100)
+                num_reads=num_reads,
+                planning_horizon_days=planning_horizon_days
             )
 
             # 2. Crear Input del Modelo (validando dentro)
@@ -149,8 +168,6 @@ def display_planning():
                 # Llamar a la función de optimización
 
                 result = model_instance.solve() # Llamar al método solve del objeto
-                dataset_name = st.session_state.get('dataset_name', 'manual_dataset')
-                save_solver_result(result, input_data, dataset_name=dataset_name) # Guardar resultados en CSV
 
             
             # 4. Guardar Resultado y la Fecha de Inicio USADA
@@ -158,6 +175,7 @@ def display_planning():
             st.session_state['last_model'] = model_instance # Guardar la instancia del modelo
             st.session_state['last_run_start_date'] = input_data.config.start_date # <-- GUARDAR LA FECHA DE INICIO USADA
             st.session_state['availability_numeric'] = model_instance.availability_numeric # Guardar la disponibilidad numérica
+            log_experiment(model_instance)
             st.success("✅ Optimización finalizada.")
 
         except ValueError as ve: # Capturar errores de validación de datos
@@ -178,6 +196,8 @@ def display_planning():
     show_results()
 
 
+# En ui_planning.py, reemplaza tu función show_results con esta:
+
 def show_results():
     """Muestra los resultados de la planificación leyendo de st.session_state."""
     if 'last_result' not in st.session_state:
@@ -192,7 +212,6 @@ def show_results():
     if 'last_model' in st.session_state:
         try:
             st.subheader("🔍 Diagnóstico del modelo")
-            # st.write("🧪 DEBUG - Tipo de modelo:", type(st.session_state['last_model']))
             generate_model_diagnostics(st.session_state['last_model'])
         except Exception as diag_error:
             st.warning(f"No se pudo generar el diagnóstico del modelo: {diag_error}")
@@ -202,17 +221,17 @@ def show_results():
         st.success(f"Solución Óptima encontrada en {result.solver_runtime:.2f}s.")
     elif result.status == "Timelimit":
         st.warning(f"Límite de tiempo alcanzado ({result.solver_runtime:.2f}s). Mostrando la mejor solución encontrada.")
-    elif result.status.startswith("Feasible"):
-        st.success(f"Solución factible encontrada en {result.solver_runtime:.2f}s.")
-        if "Validation Pending" in result.status:
-            st.warning("⚠️ Solución QUBO no validada contra todas las restricciones.")
+    elif result.status.startswith("Feasible") or result.status == "INFEASIBLE": # INFEASIBLE también puede tener resultados para analizar
+        # Mostrar estado incluso si es INFEASIBLE, para ver los errores de validación
+        if result.status == "INFEASIBLE":
+            st.error("La solución encontrada viola las restricciones.")
+            st.warning(result.error_message)
+        else:
+             st.success(f"Solución factible encontrada en {result.solver_runtime:.2f}s.")
     elif "Error" in result.status:
         st.error(f"Falló la ejecución: {result.status}")
         if result.error_message:
             st.code(result.error_message)
-        return
-    elif result.status == "Infeasible":
-        st.error("El modelo resultó infactible. Revisa los datos y restricciones.")
         return
     else:
         st.info(f"Estado del solver: {result.status}")
@@ -226,16 +245,25 @@ def show_results():
     with col3:
         st.metric("Tiempo del Solver", f"{result.solver_runtime:.2f}s")
 
-    # Datos de asignación
-    assignment = result.assignment
-    if not assignment:
-        st.info("No hay datos de asignación disponibles.")
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Usamos result.work_details que contiene el desglose completo de horas,
+    # en lugar de result.assignment.
+    
+    work_details = result.work_details
+    if not work_details:
+        st.warning("La solución no contiene detalles de trabajo para visualizar.")
         return
 
     schedule_data = [
         {"Proyecto": p, "Tarea": t, "Recurso": r, "Día Num.": d, "Horas": round(h, 2)}
-        for (p, t, r, d), h in assignment.items() if h > 0.01
+        for (p, t, r, d), h in work_details.items() if h > 0.01
     ]
+    # --- FIN DE LA CORRECCIÓN ---
+
+    if not schedule_data:
+        st.info("No hay datos de asignación con horas suficientes para mostrar.")
+        return
+        
     df = pd.DataFrame(schedule_data)
 
     # Mapear expertise
@@ -245,7 +273,7 @@ def show_results():
     }
     df["Expertise"] = df["Recurso"].map(resource_expertise_map).fillna("Desconocido")
 
-    # Visualizaciones
+    # Visualizaciones (No necesitan cambios, ya que 'df' tiene la estructura correcta)
     gantt_start_date = st.session_state.get('last_run_start_date', date.today())
 
     # 1. Visualización por recurso
@@ -261,9 +289,6 @@ def show_results():
     st.subheader("📋 Métricas de ocupación por recurso")
     availability_numeric = st.session_state.get('availability_numeric', {})
     show_idle_capacity(df, availability_numeric, makespan=result.makespan)
-
-
-
 
     # 4. Gantt por proyecto
     st.subheader("🧱 Visualización por Proyecto")

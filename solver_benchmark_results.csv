@@ -1,2 +1,66 @@
-dataset_name,projects,tasks,resources,status,makespan,solver_runtime,run_timestamp
-manual_dataset,4,13,5,Solution Found (Unknown Status Code: optimal),18.0,32.86,2025-05-19 14:01:23
+timestamp,problem_name,model_class,status,makespan,solver_runtime_sec,num_reads,solver_time_limit,bqm_variables,bqm_energy,num_validation_errors,validation_errors,P_CRITICAL,P_HARD,P_MEDIUM,P_SEQ,P_AVAIL,P_HOURS_TOTAL
+2025-06-27 14:47:38,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,5,2.51,100,,551,288305.0,7,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=9.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=13.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=11.0
+Disponibilidad recurso 'Carlos Muñoz' día 6: Disponible=0, Usado=1.0
+Disponibilidad recurso 'Carlos Muñoz' día 7: Disponible=0, Usado=1.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 5 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 17:40:16,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,5,2.19,100,,551,288005.0,8,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=9.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=12.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=11.0
+Disponibilidad recurso 'Carlos Muñoz' día 5: Disponible=0, Usado=1.0
+Disponibilidad recurso 'Carlos Muñoz' día 6: Disponible=0, Usado=1.0
+Disponibilidad recurso 'Cristian Franco' día 5: Disponible=0, Usado=1.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 5 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 17:46:04,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,5,2.18,100,,551,368505.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=18.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=23.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=14.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 3 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 17:46:29,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,5,2.15,100,,551,366055.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=18.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=22.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=14.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 3 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 17:51:25,RCPSP_2p_3t_2r_10d,NealMakespanModel,Execution Error,,0.0,100,,0,,0,,,,,,,
+2025-06-27 18:45:45,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,5,1.64,100,,506,549205.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=20.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=19.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=18.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 5 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 18:50:21,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,5,2.29,100,,506,544550.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=15.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=21.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=14.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 6 pero 'Analisis datos' empieza día 2",,,,,,
+2025-06-27 18:51:41,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,5,5.64,300,,506,537550.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=11.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=16.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=14.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 5 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 19:00:04,RCPSP_2p_3t_2r_30d,MakespanMinimizationPuLP,Optimal,3.0,0.43,,300,,,,,,,,,,
+2025-06-27 19:01:43,RCPSP_2p_3t_2r_30d,NealMakespanModel,INFEASIBLE,15,92.23,1000,,1477,82327500.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=52.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=62.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=65.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 15 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 19:03:45,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,21.74,1000,,740,3280579.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=31.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=32.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=24.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 19:12:38,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,23.73,1000,,740,3251254.0,5,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=16.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=20.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=12.0
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 19:19:18,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,36.57,1000,,740,3240229.0,2,"La solución de menor energía viola las restricciones:
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 1",,,,,,
+2025-06-27 19:29:00,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,144.67,5000,,740,3240229.0,2,"La solución de menor energía viola las restricciones:
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 2",,,,,,
+2025-06-27 19:50:08,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,104.24,3000,,1100,3240229.0,2,"La solución de menor energía viola las restricciones:
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 3",,,,,,
+2025-06-28 00:48:19,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,129.46,3000,,1100,3240379.0,2,"La solución de menor energía viola las restricciones:
+Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 2",,,,,,

@@ -39,6 +39,7 @@ class OptimizationConfig:
     planning_horizon_days: Optional[int] = None  # Si se precalcula el num días
     solver_time_limit: int = 300  # Segundos
     ga_params: Optional[Dict[str, Any]] = None  # Parámetros para el algoritmo genético
+    num_reads: int = 1000  # Número de lecturas para el algoritmo genético o D-Wave
     # Añadir otros parámetros si son necesarios (ej: factor penalización si se usa)
 
 @dataclass
@@ -60,4 +61,5 @@ class OptimizationResult:
     assignment: Dict[Tuple[str, str, str, int], float] = field(default_factory=dict) # {(p_name, t_name, r_name, d_num): hours}
     task_completion_days: Dict[Tuple[str, str], float] = field(default_factory=dict) # {(p_name, t_name): day_num}
     error_message: Optional[str] = None
-    log: Optional[str] = None # Para guardar logs del solver si se capturan
+    log: Optional[str] = None # Para guardar logs del solver si se 
+    work_details: dict = field(default_factory=dict)
