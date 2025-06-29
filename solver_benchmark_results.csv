@@ -64,3 +64,27 @@ Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba d
 Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 3",,,,,,
 2025-06-28 00:48:19,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,129.46,3000,,1100,3240379.0,2,"La solución de menor energía viola las restricciones:
 Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 2",,,,,,
+2025-06-28 01:55:58,RCPSP_2p_3t_2r_10d,NealMakespanModel,Execution Error,,0.0,1000,,0,,0,,500.0,100.0,,,,
+2025-06-28 01:57:52,RCPSP_2p_3t_2r_10d,NealMakespanModel,Execution Error,,0.0,1000,,0,,0,,500.0,100.0,,,,
+2025-06-28 02:05:42,RCPSP_2p_3t_2r_10d,NealMakespanModel,Execution Error,,0.0,1000,,0,,0,,500.0,100.0,,,,
+2025-06-28 02:07:58,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,0,12.18,1000,,170,6200.0,4,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=0.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=0.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=0.0",500.0,100.0,,,,
+2025-06-28 02:15:59,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,0,11.64,1000,,170,25801.0,4,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=0.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=0.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=0.0",500.0,100.0,,,,
+2025-06-28 02:29:57,RCPSP_2p_3t_2r_10d,MakespanMinimizationSCIP,Solution Found (Unknown Status Code: optimal),3.0,0.1,,300,,,,,,,,,,
+2025-06-28 14:20:20,RCPSP_2p_3t_2r_15d,SimplifiedPuLPModel,Execution Error,,0.0,,,,,,,,,,,,
+2025-06-28 14:20:23,RCPSP_2p_3t_2r_15d,SimplifiedPuLPModel,Execution Error,,0.0,,,,,,,,,,,,
+2025-06-28 14:23:03,RCPSP_2p_3t_2r_15d,SimplifiedPuLPModel,Infeasible,12.0,0.09,,,,,,,,,,,,
+2025-06-28 14:23:47,RCPSP_2p_3t_2r_15d,SimplifiedPuLPModel,Execution Error,,0.0,,,,,,,,,,,,
+2025-06-28 14:25:37,RCPSP_2p_3t_2r_15d,SimplifiedPuLPModel,Execution Error,,0.34,,,,,,,,,,,,
+2025-06-28 14:25:43,RCPSP_2p_3t_2r_15d,SimplifiedPuLPModel,Execution Error,,0.35,,,,,,,,,,,,
+2025-06-28 14:29:08,RCPSP_2p_3t_2r_30d,SimplifiedPuLPModel,Execution Error,,0.53,,,,,,,,,,,,
+2025-06-28 14:30:03,RCPSP_2p_3t_2r_30d,SimplifiedPuLPModel,Execution Error,,0.56,,,,,,,,,,,,
+2025-06-28 14:30:19,RCPSP_2p_3t_2r_30d,SimplifiedPuLPModel,Optimal,3.0,0.74,,,,,,,,,,,,
+2025-06-29 11:54:39,RCPSP_2p_3t_2r_30d,SimplifiedPuLPModel,Optimal,3.0,1.26,,,,,,,,,,,,
+2025-06-29 11:57:07,RCPSP_2p_3t_2r_30d,SimplifiedPuLPModel,Optimal,4.0,0.63,,,,,,,,,,,,
+2025-06-29 11:57:15,RCPSP_2p_3t_2r_30d,SimplifiedPuLPModel,Optimal,3.0,0.83,,,,,,,,,,,,
