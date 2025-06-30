@@ -18,7 +18,7 @@ from optimization.model_pulp import MakespanMinimizationPuLP
 from optimization.neal_model import NealMakespanModel
 from optimization.model_SCIP import MakespanMinimizationSCIP
 from optimization.genetic_model import GeneticMakespanPlanner
-from utils import log_experiment # Importar función para guardar resultados
+from utils.utils import log_experiment # Importar función para guardar resultados
 from optimization.pulp_simplified_model import SimplifiedPuLPModel # Importar el modelo simplificado de PuLP
 
 # --- Mapeo de Opciones a Clases ---

@@ -32,10 +32,10 @@ class NealMakespanModel(OptimizationModel):
 
     def _build_model(self):
         """
-        Versión de DEPURACIÓN del modelo simplificado.
-        Objetivo: Aislar y verificar el mecanismo de asignación de trabajo.
+        Construye un modelo QUBO SIMPLIFICADO con PENALIZACIONES MANUALES Y EXPLÍCITAS.
+        VERSIÓN FINAL CORREGIDA.
         """
-        print("DEBUG QUBO: Construyendo modelo en MODO DEPURACIÓN...")
+        print("DEBUG QUBO: Construyendo modelo con formulación MANUAL...")
         
         # --- 1. PREPARACIÓN DE CONSTANTES ---
         level_map = {"Junior": 1, "Senior": 2, "Experto": 3}
@@ -43,61 +43,102 @@ class NealMakespanModel(OptimizationModel):
         max_day_val = self.days_list[-1] if self.days_list else 1
         
         bqm = dimod.BinaryQuadraticModel('BINARY')
-        makespan_expr, _ = integer_to_binary("Makespan", max_day_val)
+        
+        # --- 2. COEFICIENTES DE PENALIZACIÓN ---
+        P_CRITICAL = 1000.0
+        P_HARD = 200.0
+        P_OBJECTIVE = 1.0
 
-        # --- 2. COEFICIENTES DE PENALIZACIÓN (SIMPLIFICADOS PARA DEPURAR) ---
-        # Usaremos valores absolutos y claros para entender su efecto.
-        # La penalización por no hacer el trabajo debe ser mayor que cualquier posible
-        # beneficio de tener un makespan bajo.
-        P_CUMPLIR_HORAS = 500.0  # ¡Una multa muy alta por no trabajar!
-        P_ASIGNACION = 200.0     # Multa por errores de asignación.
-        P_SECUENCIA = 200.0      # Multa por romper la secuencia.
-        P_DISPONIBILIDAD = 100.0 # Multa por sobrecarga.
-        P_OBJETIVO = 1.0         # El "premio" por un makespan bajo es relativamente pequeño.
-
-        self.penalties = { 'P_CUMPLIR_HORAS': P_CUMPLIR_HORAS, 'P_ASIGNACION': P_ASIGNACION }
+        self.penalties = { 'P_CRITICAL': P_CRITICAL, 'P_HARD': P_HARD }
             
-        # --- 3. OBJETIVO ---
-        # bqm.update(P_OBJECTIVE * makespan_expr) # <-- Desactivamos temporalmente el objetivo
+        # --- 3. VARIABLES Y OBJETIVO ---
+        makespan_expr, _ = integer_to_binary("Makespan", max_day_val)
+        bqm.update(P_OBJECTIVE * makespan_expr)
 
-        # --- 4. RESTRICCIONES (EN MODO DEPURACIÓN) ---
+        # --- 4. RESTRICCIONES COMO PENALIZACIONES CUADRÁTICAS MANUALES ---
 
-        # R1: Asignación Única (ESENCIAL)
+        # R1: Asignación Única
         print("DEBUG QUBO: Formulando P: Asignación Única...")
+        sum_x_constraints = {}
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
-                terms = [(f"x_{p}_{t}_{r}", 1) for r in self.resource_names]
-                bqm.add_linear_equality_constraint(terms=terms, lagrange_multiplier=P_ASIGNACION, constant=-1)
+                sum_x = dimod.quicksum(dimod.Binary(f"x_{p}_{t}_{r}") for r in self.resource_names)
+                bqm.update(P_CRITICAL * (sum_x - 1)**2)
 
-        # R2: Expertise (DESACTIVADA TEMPORALMENTE)
-        # print("DEBUG QUBO: Formulando P: Expertise...")
+        # R2: Expertise
+        print("DEBUG QUBO: Formulando P: Expertise...")
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                req_level = level_map.get(self.expertise_required_dict.get((p,t), "Junior"), 1)
+                for r in self.resource_names:
+                    if level_map.get(self.expertise_dict.get(r, "Junior"), 1) < req_level:
+                        bqm.add_variable(f"x_{p}_{t}_{r}", P_CRITICAL)
 
-        # R3: Vínculo Asignación-Trabajo (x -> z) (ESENCIAL)
+        # R3: Vínculo Asignación-Trabajo (x -> z)
         print("DEBUG QUBO: Formulando P: Vínculo Asignación-Trabajo...")
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
                 for r in self.resource_names:
-                    x_label = f"x_{p}_{t}_{r}"
                     for d in self.days_list:
-                        z_label = f"z_{r}_{t}_{d}"
-                        terms = [(z_label, 1), (x_label, -1)]
-                        bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_ASIGNACION, label=f"link_xz_{r}_{t}_{d}", ub=0)
+                        z = dimod.Binary(f"z_{r}_{t}_{d}")
+                        x = dimod.Binary(f"x_{p}_{t}_{r}")
+                        bqm.update(P_CRITICAL * z * (1 - x))
 
-        # R4: Horas Totales (ESENCIAL)
+        # R4: Horas Totales
         print("DEBUG QUBO: Formulando P: Horas Totales...")
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
                 H_pt = self.hours_required_dict.get((p, t), 0)
-                terms = [(f"z_{r}_{t}_{d}", -BLOCK_SIZE) for r in self.resource_names for d in self.days_list]
-                bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_CUMPLIR_HORAS, label=f"total_hours_{p}_{t}", ub=-H_pt)
+                sum_z_hours = dimod.quicksum(BLOCK_SIZE * dimod.Binary(f"z_{r}_{t}_{d}") for r in self.resource_names for d in self.days_list)
+                slack_expr, _ = integer_to_binary(f"slack_hours_{p}_{t}", H_pt)
+                bqm.update(P_CRITICAL * (sum_z_hours - slack_expr - H_pt)**2)
 
-        # --- RESTRICCIONES DESACTIVADAS ---
-        # R5: Disponibilidad (DESACTIVADA TEMPORALMENTE)
-        # R6: Horas por Día (DESACTIVADA TEMPORALMENTE)
-        # R7: Secuencialidad (DESACTIVADA TEMPORALMENTE)
-        
+        # R5: Disponibilidad (Una Tarea por Día por Recurso)
+        print("DEBUG QUBO: Formulando P: Disponibilidad...")
+        for r in self.resource_names:
+            for d in self.days_list:
+                if self.availability_numeric.get((r, d), 0) > 0:
+                    sum_z_day = dimod.quicksum(dimod.Binary(f"z_{r}_{t}_{d}") for p in self.project_names for t in self.tasks_per_project_name.get(p, []))
+                    bqm.update(P_HARD * sum_z_day * (sum_z_day - 1))
+
+        # R6: Definición de Makespan
+        print("DEBUG QUBO: Formulando P: Definición de Makespan...")
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                for r in self.resource_names:
+                    for d in self.days_list:
+                        z = dimod.Binary(f"z_{r}_{t}_{d}")
+                        # makespan >= d * z_rtd
+                        # Lo formulamos como P * z * (d - makespan) si d > makespan
+                        # Esto es complejo, una forma más simple es una desigualdad con slack
+                        slack_expr, _ = integer_to_binary(f"slack_mks_{r}_{t}_{d}", d)
+                        bqm.update(P_HARD * (d * z - makespan_expr - slack_expr)**2)
+
+        # R7: Secuencialidad (VERSIÓN FINAL SIMPLIFICADA)
+        print("DEBUG QUBO: Formulando P: Secuencia...")
+        for p_proj in self.project_names:
+            sorted_tasks = sorted(
+                self.tasks_per_project_name.get(p_proj, []),
+                key=lambda t_name: getattr(self.task_info.get((p_proj, t_name)), 'sequence', float('inf'))
+            )
+            for i in range(len(sorted_tasks) - 1):
+                t_i, t_j = sorted_tasks[i], sorted_tasks[i+1] # Predecesora i, sucesora j
+                
+                # Un RECURSO 'r' no puede trabajar en la tarea sucesora 'j' en el día 'd'
+                # si ese MISMO recurso 'r' está trabajando en la predecesora 'i' en un día 'k' >= 'd'.
+                for r in self.resource_names:
+                    for d in self.days_list:
+                        for k in self.days_list:
+                            if k >= d:
+                                # --- INICIO DE LA CORRECCIÓN ---
+                                # Usamos los NOMBRES (strings) de las variables, no objetos dimod.Binary()
+                                z_i_label = f"z_{r}_{t_i}_{k}"
+                                z_j_label = f"z_{r}_{t_j}_{d}"
+                                bqm.add_interaction(z_i_label, z_j_label, P_CRITICAL)
+                                # --- FIN DE LA CORRECCIÓN ---
+                                    
         self.model = bqm
-        print(f"DEBUG QUBO: Modelo de DEPURACIÓN construido con {len(self.model.variables)} variables.")
+        print(f"DEBUG QUBO: Modelo MANUAL construido con {len(self.model.variables)} variables.")
         return self.model
 
     def _solve_model(self) -> tuple[str, float]:
