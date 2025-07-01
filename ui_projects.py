@@ -150,27 +150,39 @@ def display_project_management():
             with st.expander("Editar Datos del Proyecto"):
                  # Ensure form key is unique based on the selected project
                  with st.form(f"edit_project_form_{currently_selected_project_id}"):
-                     edited_name = st.text_input("Nombre Proyecto", value=project_data.get('name', ''), key=f"edit_proj_name_{currently_selected_project_id}") # Use .get()
-                     # Handle date input value - needs to be a date object or None
-                     current_deadline_value = project_data.get('deadline')
-                     if isinstance(current_deadline_value, str):
-                         try:
+                    edited_name = st.text_input("Nombre Proyecto", value=project_data.get('name', ''), key=f"edit_proj_name_{currently_selected_project_id}") # Use .get()
+                     # 1. Obtén la fecha límite guardada y conviértela a objeto 'date' si es necesario.
+                    current_deadline_value = project_data.get('deadline')
+                    if isinstance(current_deadline_value, str):
+                        try:
                             current_deadline_value = date.fromisoformat(current_deadline_value)
-                         except (ValueError, TypeError):
-                            current_deadline_value = None # Or date.today() as a fallback? Let's use None for now
+                        except (ValueError, TypeError):
+                            current_deadline_value = None
 
-                     edited_deadline = st.date_input(
-                         "Fecha Límite",
-                         value=current_deadline_value,
-                         min_value=date.today(), # Allow changing to today or later
-                         key=f"edit_proj_deadline_{currently_selected_project_id}"
-                     )
+                    # 2. Define la fecha de hoy para usarla como referencia.
+                    hoy = date.today()
 
-                     col_save, col_del = st.columns(2)
-                     save_proj = col_save.form_submit_button("Guardar Cambios Proyecto")
-                     delete_proj = col_del.form_submit_button("🗑️ Eliminar Proyecto Completo")
+                    # 3. Comprueba si la fecha límite guardada es del pasado.
+                    #    Si no hay fecha guardada (None) o si es anterior a hoy, usa hoy como valor por defecto.
+                    #    Si no, usa la fecha guardada.
+                    valor_defecto_valido = current_deadline_value
+                    if not valor_defecto_valido or valor_defecto_valido < hoy:
+                        valor_defecto_valido = hoy
 
-                     if save_proj:
+                    # 4. Crea el widget con valores que no entran en conflicto.
+                    edited_deadline = st.date_input(
+                        "Fecha Límite",
+                        value=valor_defecto_valido,      # <--- Usamos el valor por defecto ya validado
+                        min_value=hoy,                   # <--- La fecha mínima es hoy
+                        max_value=date(2035, 12, 31),    # <--- He puesto una fecha máxima más razonable
+                        key=f"edit_proj_deadline_{currently_selected_project_id}"
+                    )
+
+                    col_save, col_del = st.columns(2)
+                    save_proj = col_save.form_submit_button("Guardar Cambios Proyecto")
+                    delete_proj = col_del.form_submit_button("🗑️ Eliminar Proyecto Completo")
+
+                    if save_proj:
                          if edited_name:
                               # Check for duplicate name excluding the current project
                               other_names = [p['name'].lower() for p in app_data.get('projects', []) if p['id'] != currently_selected_project_id] # Use .get()
@@ -190,7 +202,7 @@ def display_project_management():
                          else:
                               st.warning("El nombre del proyecto no puede estar vacío.")
 
-                     if delete_proj:
+                    if delete_proj:
                           # Confirm deletion? Add a confirmation dialog if needed.
                           # Eliminar proyecto de la lista
                           app_data['projects'] = [p for p in app_data.get('projects', []) if p['id'] != currently_selected_project_id] # Use .get()

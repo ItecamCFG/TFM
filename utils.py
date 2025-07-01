@@ -66,7 +66,7 @@ def log_experiment(model_instance):
         'timestamp', 'problem_name', 'model_class', 'status', 'makespan', 
         'solver_runtime_sec', 'num_reads', 'solver_time_limit', 
         'bqm_variables', 'bqm_energy', 'num_validation_errors', 'validation_errors',
-        'P_CRITICAL', 'P_HARD', 'P_MEDIUM', 'P_SEQ', 'P_AVAIL', 'P_HOURS_TOTAL'
+        'P_CRITICAL', 'P_HARD', 'P_MEDIUM', 'P_SEQ', 'P_AVAIL', 'P_HOURS_TOTAL','P_LOW'
     ]
 
     file_exists = os.path.isfile(log_filepath)

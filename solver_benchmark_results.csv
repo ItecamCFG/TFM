@@ -64,3 +64,8 @@ Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba d
 Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 3",,,,,,
 2025-06-28 00:48:19,RCPSP_2p_3t_2r_15d,NealMakespanModel,INFEASIBLE,8,129.46,3000,,1100,3240379.0,2,"La solución de menor energía viola las restricciones:
 Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba día 8 pero 'Analisis datos' empieza día 2",,,,,,
+2025-07-01 10:32:53,RCPSP_2p_3t_2r_30d,MakespanMinimizationPuLP,Optimal,3.0,0.18,,300,,,,,,,,,,
+2025-07-01 12:30:55,RCPSP_2p_3t_2r_5d,NealMakespanModel,INFEASIBLE,0,7.25,1000,,327,26387.80000000447,4,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=0.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=0.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=0.0",1250.0,250.0,25.0,,,,5.0
