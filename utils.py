@@ -61,12 +61,21 @@ def log_experiment(model_instance):
     # Unimos los diccionarios
     full_row_data = {**base_data, **solver_specific_data}
 
-    # Definimos TODOS los posibles encabezados. DictWriter manejará las columnas que no apliquen.
+    # Definimos TODOS los posibles encabezados.
     fieldnames = [
+        # Base
         'timestamp', 'problem_name', 'model_class', 'status', 'makespan', 
-        'solver_runtime_sec', 'num_reads', 'solver_time_limit', 
-        'bqm_variables', 'bqm_energy', 'num_validation_errors', 'validation_errors',
-        'P_CRITICAL', 'P_HARD', 'P_MEDIUM', 'P_SEQ', 'P_AVAIL', 'P_HOURS_TOTAL','P_LOW'
+        'solver_runtime_sec',
+        # MILP
+        'solver_time_limit', 
+        # QUBO
+        'num_reads', 'bqm_variables', 'bqm_energy', 
+        'num_validation_errors', 'validation_errors',
+        # Penalties (añadimos todas las que definiste)
+        'P_ABSOLUTE', 'P_CRITICAL', 'P_HARD', 'P_MEDIUM', 'P_LOW',
+        'P_ASSIGN', 'P_EXPERTISE', 'P_SEQ', 'P_AVAIL', 'P_DEADLINE',
+        'P_HOURS_TOTAL', 'P_LINK_YX', 'P_LINK_WD', 'P_ENDDAY_DEF', 'P_MAKE_DEF',
+        'P_OBJECTIVE'
     ]
 
     file_exists = os.path.isfile(log_filepath)

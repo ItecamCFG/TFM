@@ -69,3 +69,27 @@ Secuencia (Configurador de mesas fotovoltaicas): Tarea 'Simulacion CFDS' acaba d
 Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=0.0
 Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=0.0
 Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=0.0",1250.0,250.0,25.0,,,,5.0
+2025-07-01 13:47:36,RCPSP_2p_3t_2r_5d,NealMakespanModel,INFEASIBLE,0,7.02,,1000,327,26362.80000000447,4,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=0.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=0.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=0.0",,1250.0,250.0,25.0,5.0,,,,,,,,,,,
+2025-07-01 13:55:43,RCPSP_2p_3t_2r_5d,NealMakespanModel,Execution Error,,0.0,,1000,0,,0,,,,,,,,,,,,,,,,,
+2025-07-01 13:56:42,RCPSP_2p_3t_2r_5d,NealMakespanModel,Execution Error,,0.0,,1000,0,,0,,,,,,,,,,,,,,,,,
+2025-07-01 13:58:43,RCPSP_2p_3t_2r_30d,NealMakespanModel,Execution Error,,0.0,,1000,0,,0,,,,,,,,,,,,,,,,,
+2025-07-01 14:01:32,RCPSP_2p_3t_2r_30d,NealMakespanModel,Execution Error,,0.0,,1000,0,,0,,,,,,,,,,,,,,,,,
+2025-07-01 14:01:37,RCPSP_2p_3t_2r_30d,NealMakespanModel,Execution Error,,0.0,,1000,0,,0,,,,,,,,,,,,,,,,,
+2025-07-01 14:03:47,RCPSP_2p_3t_2r_30d,NealMakespanModel,Execution Error,,0.0,,1000,0,,0,,,,,,,,,,,,,,,,,
+2025-07-01 14:22:37,RCPSP_2p_3t_2r_5d,NealMakespanModel,INFEASIBLE,0,1.18,,1000,57,0.0,4,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=0.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=0.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=0.0",,,,,,,,,,,,,,,,
+2025-07-01 14:22:55,RCPSP_2p_3t_2r_10d,NealMakespanModel,INFEASIBLE,0,2.18,,1000,104,0.0,4,"La solución de menor energía viola las restricciones:
+Horas tarea (Configurador de mesas fotovoltaicas,Simulacion CFDS): Requeridas=8.0, Realizadas=0.0
+Horas tarea (Configurador de mesas fotovoltaicas,Analisis datos): Requeridas=10.0, Realizadas=0.0
+Horas tarea (Chatbot PRL,RAG Documentos): Requeridas=6.0, Realizadas=0.0",,,,,,,,,,,,,,,,
+2025-07-01 14:28:43,RCPSP_2p_3t_2r_10d,NealMakespanModel,Feasible (Simple Model),10,2.21,,1000,104,0.0,0,,,,,,,,,,,,,,,,,
+2025-07-01 14:43:01,RCPSP_2p_3t_2r_10d,NealMakespanModel,Feasible (Simple Model),6,3.04,,1000,116,6.0,0,,,,,,,,,,,,,,,,,
+2025-07-02 08:19:31,RCPSP_2p_3t_2r_10d,MakespanMinimizationPuLP,Optimal,3.0,0.26,300,,,,,,,,,,,,,,,,,,,,,
+2025-07-02 08:19:45,RCPSP_2p_3t_2r_10d,MakespanMinimizationSCIP,Solution Found (Unknown Status Code: optimal),3.0,0.58,300,,,,,,,,,,,,,,,,,,,,,
+2025-07-02 08:20:00,RCPSP_2p_3t_2r_10d,GeneticMakespanPlanner,Feasible (GA),0,5.42,,,,,,,,,,,,,,,,,,,,,,
+2025-07-02 08:20:17,RCPSP_2p_3t_2r_10d,NealMakespanModel,Feasible (Simple Model),5,3.31,,1000,116,6.0,0,,,,,,,,,,,,,,,,,
