@@ -87,7 +87,7 @@ class NealMakespanModel(OptimizationModel):
         P_LINK_WD = P_HARD          # La nueva restricción y los enlaces lógicos
         P_LINK_YX = P_MEDIUM
 
-        P_OBJECTIVE = 0.1 # Penalización por el objetivo de makespan
+        P_OBJECTIVE = P_BASE # Penalización por el objetivo de makespan
 
         self.penalties = { 'P_CRITICAL': P_CRITICAL, 'P_HARD': P_HARD, 'P_MEDIUM': P_MEDIUM, 'P_LOW': P_LOW }
             
@@ -138,109 +138,109 @@ class NealMakespanModel(OptimizationModel):
                             terms.append((var, coeff))
                 bqm.add_linear_equality_constraint(terms=terms, lagrange_multiplier=P_HOURS_TOTAL, constant=-H_pt)
 
-        # 5. Disponibilidad del Recurso
-        print("DEBUG QUBO: Formulando P: disponibilidad...")
-        for r in self.resource_names:
-            for d in self.days_list:
-                A_rd = self.availability_numeric.get((r, d), 0)
-                terms = []
-                for p in self.project_names:
-                    for t in self.tasks_per_project_name.get(p, []):
-                        for var, coeff in y_expressions[(p, t, r, d)].linear.items():
-                            terms.append((var, coeff))
-                bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_AVAIL, ub=A_rd,label =f"Availability_{r}_{d}")
+        # # 5. Disponibilidad del Recurso
+        # print("DEBUG QUBO: Formulando P: disponibilidad...")
+        # for r in self.resource_names:
+        #     for d in self.days_list:
+        #         A_rd = self.availability_numeric.get((r, d), 0)
+        #         terms = []
+        #         for p in self.project_names:
+        #             for t in self.tasks_per_project_name.get(p, []):
+        #                 for var, coeff in y_expressions[(p, t, r, d)].linear.items():
+        #                     terms.append((var, coeff))
+        #         bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_AVAIL, ub=A_rd,label =f"Availability_{r}_{d}")
 
-        # 6. Enlace y -> WorkDay
-        print("DEBUG QUBO: Formulando P: link y-WorkDay...")
-        for p in self.project_names:
-            for t in self.tasks_per_project_name.get(p, []):
-                for d in self.days_list:
-                    work_var_label = f"WorkDay_{p}_{t}_{d}"
-                    max_y_sum_daily = M_daily * len(self.resource_names)
-                    terms = []
-                    for r_loop in self.resource_names:
-                        for var, coeff in y_expressions[(p,t,r_loop,d)].linear.items():
-                            terms.append((var, coeff))
-                    terms.append((work_var_label, -max_y_sum_daily))
-                    bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_LINK_WD, ub=0,label = f"LinkYWorkDay_{p}_{t}_{d}")
+        # # 6. Enlace y -> WorkDay
+        # print("DEBUG QUBO: Formulando P: link y-WorkDay...")
+        # for p in self.project_names:
+        #     for t in self.tasks_per_project_name.get(p, []):
+        #         for d in self.days_list:
+        #             work_var_label = f"WorkDay_{p}_{t}_{d}"
+        #             max_y_sum_daily = M_daily * len(self.resource_names)
+        #             terms = []
+        #             for r_loop in self.resource_names:
+        #                 for var, coeff in y_expressions[(p,t,r_loop,d)].linear.items():
+        #                     terms.append((var, coeff))
+        #             terms.append((work_var_label, -max_y_sum_daily))
+        #             bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_LINK_WD, ub=0,label = f"LinkYWorkDay_{p}_{t}_{d}")
 
-        # 7. Definición EndDay
-        print("DEBUG QUBO: Formulando P: definición EndDay...")
-        for p in self.project_names:
-            for t in self.tasks_per_project_name.get(p, []):
-                end_expr_pt = end_day_expressions[(p,t)]
-                for d_loop in self.days_list:
-                    work_var_label = f"WorkDay_{p}_{t}_{d_loop}"
-                    terms = [(var, coeff) for var, coeff in end_expr_pt.linear.items()]
-                    terms.append((work_var_label, -max_day_val - 10)) # Big-M
-                    constraint_constant = max_day_val + 10 - d_loop
-                    bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_ENDDAY_DEF, constant=constraint_constant, lb=0, label =f"EndDayDef_{p}_{t}_{d_loop}")
+        # # 7. Definición EndDay
+        # print("DEBUG QUBO: Formulando P: definición EndDay...")
+        # for p in self.project_names:
+        #     for t in self.tasks_per_project_name.get(p, []):
+        #         end_expr_pt = end_day_expressions[(p,t)]
+        #         for d_loop in self.days_list:
+        #             work_var_label = f"WorkDay_{p}_{t}_{d_loop}"
+        #             terms = [(var, coeff) for var, coeff in end_expr_pt.linear.items()]
+        #             terms.append((work_var_label, -max_day_val - 10)) # Big-M
+        #             constraint_constant = max_day_val + 10 - d_loop
+        #             bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_ENDDAY_DEF, constant=constraint_constant, lb=0, label =f"EndDayDef_{p}_{t}_{d_loop}")
         
-        # 8. Secuencialidad
-        print("DEBUG QUBO: Formulando P: secuencia (Finish-to-Start) [NUEVA VERSIÓN]...")
-        for p_proj in self.project_names:
-            sorted_tasks = sorted(
-                self.tasks_per_project_name.get(p_proj, []),
-                key=lambda t_name: getattr(self.task_info.get((p_proj, t_name)), 'sequence', float('inf'))
-            )
-            for i in range(len(sorted_tasks) - 1):
-                t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
-                for d_day in self.days_list:
-                    work_day_successor_label = f"WorkDay_{p_proj}_{t_i_plus_1}_{d_day}"
-                    for k_day in self.days_list:
-                        if k_day >= d_day:
-                            work_day_predecessor_label = f"WorkDay_{p_proj}_{t_i}_{k_day}"
-                            bqm.add_interaction(work_day_predecessor_label, work_day_successor_label, P_SEQ)
+        # # 8. Secuencialidad
+        # print("DEBUG QUBO: Formulando P: secuencia (Finish-to-Start) [NUEVA VERSIÓN]...")
+        # for p_proj in self.project_names:
+        #     sorted_tasks = sorted(
+        #         self.tasks_per_project_name.get(p_proj, []),
+        #         key=lambda t_name: getattr(self.task_info.get((p_proj, t_name)), 'sequence', float('inf'))
+        #     )
+        #     for i in range(len(sorted_tasks) - 1):
+        #         t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
+        #         for d_day in self.days_list:
+        #             work_day_successor_label = f"WorkDay_{p_proj}_{t_i_plus_1}_{d_day}"
+        #             for k_day in self.days_list:
+        #                 if k_day >= d_day:
+        #                     work_day_predecessor_label = f"WorkDay_{p_proj}_{t_i}_{k_day}"
+        #                     bqm.add_interaction(work_day_predecessor_label, work_day_successor_label, P_SEQ)
 
-        # 9. Deadline
-        print("DEBUG QUBO: Formulando P: deadline...")
-        for project_data in self.input_data.projects:
-            if project_data.deadline:
-                deadline_day_num = (project_data.deadline - self.start_date).days + 1
-                if 1 <= deadline_day_num <= max_day_val:
-                    for t_task in self.tasks_per_project_name.get(project_data.name, []):
-                        terms = [(var, coeff) for var, coeff in end_day_expressions[(project_data.name, t_task)].linear.items()]
-                        bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_DEADLINE, ub=deadline_day_num,label = f"Deadline_{project_data.name}_{t_task}")
+        # # 9. Deadline
+        # print("DEBUG QUBO: Formulando P: deadline...")
+        # for project_data in self.input_data.projects:
+        #     if project_data.deadline:
+        #         deadline_day_num = (project_data.deadline - self.start_date).days + 1
+        #         if 1 <= deadline_day_num <= max_day_val:
+        #             for t_task in self.tasks_per_project_name.get(project_data.name, []):
+        #                 terms = [(var, coeff) for var, coeff in end_day_expressions[(project_data.name, t_task)].linear.items()]
+        #                 bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_DEADLINE, ub=deadline_day_num,label = f"Deadline_{project_data.name}_{t_task}")
 
-        # 10. Definición Makespan
-        print("DEBUG QUBO: Formulando P: definición Makespan...")
-        for p_proj in self.project_names:
-            for t_task in self.tasks_per_project_name.get(p_proj, []):
-                terms = []
-                for var, coeff in makespan_expr.linear.items(): terms.append((var, coeff))
-                for var, coeff in end_day_expressions[(p_proj, t_task)].linear.items(): terms.append((var, -coeff))
-                bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_MAKE_DEF, lb=0,label = f"MakeDef_{p_proj}_{t_task}")
+        # # 10. Definición Makespan
+        # print("DEBUG QUBO: Formulando P: definición Makespan...")
+        # for p_proj in self.project_names:
+        #     for t_task in self.tasks_per_project_name.get(p_proj, []):
+        #         terms = []
+        #         for var, coeff in makespan_expr.linear.items(): terms.append((var, coeff))
+        #         for var, coeff in end_day_expressions[(p_proj, t_task)].linear.items(): terms.append((var, -coeff))
+        #         bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_MAKE_DEF, lb=0,label = f"MakeDef_{p_proj}_{t_task}")
 
 
-        # --- NUEVA RESTRICCIÓN: FORZAR HORAS SI WORK_DAY ES 1 ---
-        print("DEBUG QUBO: Formulando P: Forzar horas si work_day=1...")
-        epsilon = 0.1 # Un valor pequeño pero mayor que cero
-        for p in self.project_names:
-            for t in self.tasks_per_project_name.get(p, []):
-                for d in self.days_list:
-                    work_var = work_day_vars[(p, t, d)]
-                    sum_y_ptd = dimod.quicksum(y_expressions[(p, t, r, d)] for r in self.resource_names)
+        # # --- NUEVA RESTRICCIÓN: FORZAR HORAS SI WORK_DAY ES 1 ---
+        # print("DEBUG QUBO: Formulando P: Forzar horas si work_day=1...")
+        # epsilon = 0.1 # Un valor pequeño pero mayor que cero
+        # for p in self.project_names:
+        #     for t in self.tasks_per_project_name.get(p, []):
+        #         for d in self.days_list:
+        #             work_var = work_day_vars[(p, t, d)]
+        #             sum_y_ptd = dimod.quicksum(y_expressions[(p, t, r, d)] for r in self.resource_names)
                     
-                    # La restricción es: sum_y_ptd >= epsilon * work_var
-                    # La formulamos como: sum_y_ptd - epsilon * work_var >= 0
+        #             # La restricción es: sum_y_ptd >= epsilon * work_var
+        #             # La formulamos como: sum_y_ptd - epsilon * work_var >= 0
                     
-                    constraint_expr = sum_y_ptd - epsilon * work_var
+        #             constraint_expr = sum_y_ptd - epsilon * work_var
                     
-                    # Usamos una penalización cuadrática para forzar que la expresión sea >= 0
-                    # Esto se puede hacer añadiendo un slack: constraint_expr - slack = 0
-                    # O, de forma más directa, penalizando si es negativo, lo cual es más complejo.
-                    # Usemos add_linear_inequality_constraint, que lo hace por nosotros.
+        #             # Usamos una penalización cuadrática para forzar que la expresión sea >= 0
+        #             # Esto se puede hacer añadiendo un slack: constraint_expr - slack = 0
+        #             # O, de forma más directa, penalizando si es negativo, lo cual es más complejo.
+        #             # Usemos add_linear_inequality_constraint, que lo hace por nosotros.
                     
-                    # Obtenemos los términos lineales de la expresión
-                    linear_terms = list(constraint_expr.linear.items())
+        #             # Obtenemos los términos lineales de la expresión
+        #             linear_terms = list(constraint_expr.linear.items())
                     
-                    bqm.add_linear_inequality_constraint(
-                        terms=linear_terms,
-                        lagrange_multiplier=P_LINK_WD, # Reutilizamos una penalización HARD
-                        label=f"force_hours_if_active_{p}_{t}_{d}",
-                        lb=0, # Límite inferior de la desigualdad (>= 0)
-                        ub=M_daily * len(self.resource_names) # Límite superior (un valor grande)
-            )
+        #             bqm.add_linear_inequality_constraint(
+        #                 terms=linear_terms,
+        #                 lagrange_multiplier=P_LINK_WD, # Reutilizamos una penalización HARD
+        #                 label=f"force_hours_if_active_{p}_{t}_{d}",
+        #                 lb=0, # Límite inferior de la desigualdad (>= 0)
+        #                 ub=M_daily * len(self.resource_names) # Límite superior (un valor grande)
+        #     )
 
 
         # # 11. Límite de Horas Diarias por Tarea y Recurso
@@ -445,147 +445,142 @@ class NealMakespanModel(OptimizationModel):
     def _extract_results(self, status: str):
         """
         Extrae, decodifica, valida e interpreta los resultados del sampleset.
-        Esta versión es compatible tanto con el modelo complejo como con el simple.
+        VERSIÓN COMPLETA Y DEPURABLE: Compatible con ambos modelos (simple y complejo).
         """
         if not hasattr(self, 'sampleset') or self.sampleset is None or len(self.sampleset) == 0:
-            # ... (código de manejo de error sin cambios)
+            self.result = OptimizationResult(
+                status="No Solution Found",
+                solver_runtime=self.solver_runtime,
+                error_message="El solver no devolvió un sampleset."
+            )
             return
 
         try:
+            # --- 1. MODO DEPURACIÓN: INSPECCIONAR LAS MEJORES MUESTRAS ---
+            print("\n" + "="*20 + " INICIO ANÁLISIS DEL SAMPLESET " + "="*20)
+
+            # .lowest() filtra el sampleset para quedarnos solo con las muestras de la energía más baja.
+            # .record itera sobre los registros de ese sub-conjunto.
+            for i, datum in enumerate(self.sampleset.lowest().record):
+                print(f"--- Muestra #{i+1} con Energía: {datum.energy:.2f} (Ocurrencias: {datum.num_occurrences}) ---")
+                
+                # El diccionario de la muestra está en datum.sample
+                activated_vars = {k: v for k, v in datum.sample.items() if v == 1}
+                
+                if not activated_vars:
+                    print("    (Ninguna variable activada en esta muestra)")
+                else:
+                    print(f"    Variables activadas ({len(activated_vars)}): {sorted(list(activated_vars.keys()))}")
+
+            print("="*22 + " FIN ANÁLISIS DEL SAMPLESET " + "="*23 + "\n")
+
+            # --- 2. DECODIFICACIÓN DE LA MEJOR MUESTRA ---
             best_sample = self.sampleset.first.sample
             objective_val = self.sampleset.first.energy
-            print(f"DEBUG QUBO: Mejor energía encontrada (bruta): {objective_val}")
 
-            # Inicializamos los contenedores de resultados
             makespan_val = 0
             task_completion_days = {}
-            assignment = {} # Para el modelo complejo: {(p,t,r,d): h}
-            work_details_simple = {} # Para el modelo simple: {(p,t): (r,d)}
-            
-            # --- LÓGICA DE DECODIFICACIÓN DUAL ---
-            # Comprobamos si el modelo simple se ejecutó buscando una variable 'z'
+            assignment = {}  # Para el modelo complejo: {(p,t,r,d): horas}
+
             is_simple_model = any(k.startswith('z_') for k in best_sample.keys())
 
             if is_simple_model:
                 print("DEBUG EXTRACT: Detectado resultado de MODELO SIMPLE.")
-                # Decodificamos el resultado del modelo "Tarea-en-Día"
+                work_details_simple = {}
                 for p in self.project_names:
                     for t in self.tasks_per_project_name.get(p, []):
-                        # Encontrar el día asignado
-                        assigned_day = 0
-                        for d in self.days_list:
-                            if best_sample.get(f"z_{p}_{t}_{d}", 0) == 1:
-                                assigned_day = d
-                                break
-                        
-                        # Encontrar el recurso asignado
-                        assigned_resource = None
-                        for r in self.resource_names:
-                            if best_sample.get(f"x_{p}_{t}_{r}", 0) == 1:
-                                assigned_resource = r
-                                break
-                        
+                        assigned_day = next((d for d in self.days_list if best_sample.get(f"z_{p}_{t}_{d}", 0) == 1), 0)
+                        assigned_resource = next((r for r in self.resource_names if best_sample.get(f"x_{p}_{t}_{r}", 0) == 1), None)
                         if assigned_day > 0 and assigned_resource:
                             work_details_simple[(p, t)] = (assigned_resource, assigned_day)
                             task_completion_days[(p, t)] = assigned_day
-
+                
                 if task_completion_days:
                     makespan_val = max(task_completion_days.values())
 
-            else:
+            else: # Modelo Complejo
                 print("DEBUG EXTRACT: Detectado resultado de MODELO COMPLEJO.")
-                # Lógica de decodificación del modelo complejo (la que ya tenías)
-                # ... (aquí iría tu lógica anterior para decodificar y_bits, end_day_bits, etc.)
-                pass
+                # Asegurarse de que 'self.variables' fue poblado en _build_model
+                if 'y_bits' in self.variables:
+                    for (p, t, r, d), bits_dict in self.variables['y_bits'].items():
+                        hours_val = self._decode_integer_from_bits(best_sample, bits_dict)
+                        if hours_val > 0.1:
+                            assignment[(p, t, r, d)] = hours_val
+                
+                if 'end_day_bits' in self.variables:
+                     for (p, t), bits_dict in self.variables.get('end_day_bits', {}).items():
+                        task_completion_days[(p,t)] = self._decode_integer_from_bits(best_sample, bits_dict)
 
-            # --- VALIDACIÓN E IMPRESIÓN ---
-            # El validador actual dará errores de horas para el modelo simple. ¡Es normal!
-            # Lo ignoramos por ahora, porque nuestro objetivo es solo ver la estructura.
-            
-            # Imprimimos la solución decodificada
-            print("\n" + "="*20 + " INICIO SOLUCIÓN DECODIFICADA " + "="*20)
-            print(f"Makespan Final: {makespan_val} días")
-            
-            if is_simple_model:
-                print("\n--- Planificación (Tarea -> Recurso, Día) ---")
-                sorted_plan = sorted(work_details_simple.items(), key=lambda item: item[1][1]) # Ordenar por día
-                for (p, t), (r, d) in sorted_plan:
-                    print(f"  - Día {d}: Tarea '{t}' (Proy: '{p}') -> Recurso: {r}")
-            else:
-                # Imprimir resultados del modelo complejo
-                pass
-            
-            print("="*22 + " FIN SOLUCIÓN DECODIFICADA " + "="*23 + "\n")
+                if 'makespan_bits' in self.variables:
+                    makespan_val = self._decode_integer_from_bits(best_sample, self.variables['makespan_bits'])
 
-            # El resto de la lógica para crear OptimizationResult...
-            # ...
-            # Por ahora, puedes dejar que el validador marque el resultado como INFEASIBLE.
-            # Lo importante es que AHORA SÍ verás una planificación coherente en la consola.
-            
-            # Construcción del resultado final (simplificado para este paso)
+
+            # --- 3. VALIDACIÓN DE LA SOLUCIÓN DECODIFICADA ---
+            # Para el modelo simple, esperamos errores de horas. Es normal.
+            validation_errors = self._validate_solution(assignment, task_completion_days, is_simple_model)
+
+            # --- 4. DETERMINAR ESTADO FINAL Y PREPARAR RESULTADO ---
+            final_status = status
+            error_message = None
+            if validation_errors:
+                final_status = "INFEASIBLE"
+                error_message = "La solución de menor energía viola las restricciones:\n" + "\n".join(validation_errors)
+                print(f"ADVERTENCIA QUBO: {error_message}")
+            elif is_simple_model:
+                final_status = "Feasible (Simple Model)"
+
             self.result = OptimizationResult(
-                status="Feasible" if not is_simple_model else "Feasible (Simple Model)",
+                status=final_status,
                 solver_runtime=self.solver_runtime,
                 objective_value=objective_val,
                 makespan=makespan_val,
                 assignment=assignment,
-                task_completion_days=task_completion_days
+                task_completion_days=task_completion_days,
+                error_message=error_message
             )
 
         except Exception as e:
             import traceback
-            error_message = f"Error crítico extrayendo/decodificando resultados: {e}\n{traceback.format_exc()}"
-            print(error_message)
-            self.result = OptimizationResult(status="Error Extracting", error_message=error_message, solver_runtime=self.solver_runtime)
+            error_msg = f"Error crítico extrayendo/decodificando resultados: {e}\n{traceback.format_exc()}"
+            print(error_msg)
+            self.result = OptimizationResult(status="Error Extracting", error_message=error_msg, solver_runtime=self.solver_runtime)
 
     def _decode_integer_from_bits(self, sample, bits_dict):
-        """
-        Función auxiliar para decodificar un entero a partir de sus bits.
-        VERSIÓN CORREGIDA.
-        """
+        """Función auxiliar para decodificar un entero a partir de sus bits."""
         val = 0
-        if not bits_dict:
-            return val
-            
-        # bits_dict es de la forma {0: BQM_bit0, 1: BQM_bit1, ...}
+        if not bits_dict: return val
+        
         for i, bit_var_obj in bits_dict.items():
-            # bit_var_obj es un mini-BQM. Necesitamos el nombre (string) de la variable que contiene.
-            if not hasattr(bit_var_obj, 'variables') or not bit_var_obj.variables:
-                continue 
-            
-            bit_var_label = list(bit_var_obj.variables)[0]
-            
-            # Usamos el nombre (string) para buscar en el diccionario de resultados 'sample'
+            # El objeto 'bit_var_obj' es un dimod.Binary() que contiene el nombre de la variable
+            bit_var_label = bit_var_obj.label
             if sample.get(bit_var_label, 0) == 1:
                 val += 2**i
         return val
 
-    def _validate_solution(self, assignment, work_details, completion_days):
-        """
-        Valida que la solución decodificada cumple las restricciones clave.
-        VERSIÓN CORREGIDA.
-        """
+    def _validate_solution(self, assignment, completion_days, is_simple_model=False):
+        """Valida que la solución decodificada cumple las restricciones clave."""
         errors = []
         
-        # Validación 1: Horas totales por tarea
-        for p in self.project_names:
-            for t in self.tasks_per_project_name.get(p, []):
-                H_pt = self.hours_required_dict.get((p, t), 0)
-                total_worked = sum(h for (p_k, t_k, _, _), h in work_details.items() if p_k == p and t_k == t)
-                if abs(total_worked - H_pt) > 0.1:
-                    errors.append(f"Horas tarea ({p},{t}): Requeridas={H_pt}, Realizadas={total_worked:.1f}")
+        # Validación 1: Horas totales por tarea (solo para el modelo complejo)
+        if not is_simple_model:
+            for p in self.project_names:
+                for t in self.tasks_per_project_name.get(p, []):
+                    H_pt = self.hours_required_dict.get((p, t), 0)
+                    total_worked = sum(h for (p_k, t_k, _, _), h in assignment.items() if p_k == p and t_k == t)
+                    if abs(total_worked - H_pt) > 0.1:
+                        errors.append(f"Horas tarea ({p},{t}): Requeridas={H_pt}, Realizadas={total_worked:.1f}")
 
-        # Validación 2: Disponibilidad de recursos por día
-        for r in self.resource_names:
-            for d in self.days_list:
-                A_rd = self.availability_numeric.get((r, d), 0)
-                hours_on_day = sum(h for (_, _, r_k, d_k), h in work_details.items() if r_k == r and d_k == d)
-                if hours_on_day > A_rd + 0.1:
-                    errors.append(f"Disponibilidad recurso '{r}' día {d}: Disponible={A_rd}, Usado={hours_on_day:.1f}")
+        # Validación 2: Disponibilidad de recursos por día (solo para el modelo complejo)
+        if not is_simple_model:
+            for r in self.resource_names:
+                for d in self.days_list:
+                    A_rd = self.availability_numeric.get((r, d), 0)
+                    hours_on_day = sum(h for (_, _, r_k, d_k), h in assignment.items() if r_k == r and d_k == d)
+                    if hours_on_day > A_rd + 0.1:
+                        errors.append(f"Disponibilidad recurso '{r}' día {d}: Disponible={A_rd}, Usado={hours_on_day:.1f}")
         
-        # Validación 3: Secuencialidad de tareas
+        # Validación 3: Secuencialidad de tareas (aplica a ambos modelos)
         for p_proj in self.project_names:
-            # --- CORRECCIÓN: Usar getattr para acceder de forma segura al atributo 'sequence' ---
             sorted_tasks = sorted(
                 self.tasks_per_project_name.get(p_proj, []),
                 key=lambda t_name: getattr(self.task_info.get((p_proj, t_name)), 'sequence', float('inf'))
@@ -594,10 +589,16 @@ class NealMakespanModel(OptimizationModel):
                 t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
                 end_day_i = completion_days.get((p_proj, t_i))
                 
+                # Para encontrar el día de inicio, debemos buscar la primera hora asignada
                 start_day_i_plus_1 = float('inf')
-                for (p_k, t_k, _, d_k), h in work_details.items():
-                    if p_k == p_proj and t_k == t_i_plus_1 and h > 0:
-                        start_day_i_plus_1 = min(start_day_i_plus_1, d_k)
+                if is_simple_model:
+                    # En el modelo simple, el día de inicio y fin es el mismo
+                    if completion_days.get((p_proj, t_i_plus_1)):
+                         start_day_i_plus_1 = completion_days.get((p_proj, t_i_plus_1))
+                else: # Modelo complejo
+                    for (p_k, t_k, _, d_k), h in assignment.items():
+                        if p_k == p_proj and t_k == t_i_plus_1 and h > 0:
+                            start_day_i_plus_1 = min(start_day_i_plus_1, d_k)
                 
                 if end_day_i is not None and start_day_i_plus_1 != float('inf'):
                     if end_day_i >= start_day_i_plus_1:
@@ -625,7 +626,7 @@ class NealMakespanModel(OptimizationModel):
             # --- ¡AQUÍ ESTÁ EL CAMBIO CLAVE! ---
             # Llamamos explícitamente al constructor del modelo simplificado
             print("Paso 2/4: Construyendo modelo específico (SIMPLIFICADO)...")
-            self._build_model_simple()
+            self._build_model()
             # -----------------------------------------------------------------
             
             print(f"Paso 3/4: Resolviendo (Límite: {self.input_data.config.num_reads} reads)...")
