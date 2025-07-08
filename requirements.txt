@@ -2,3 +2,4 @@ pulp
 streamlit
 pyscipopt
 dwave-neal
+dwave-ocean-sdk>=6.4.0

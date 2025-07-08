@@ -17,6 +17,7 @@ from optimization.base_model import OptimizationModel # Importar base si necesit
 from optimization.model_pulp import MakespanMinimizationPuLP
 from optimization.neal_model import NealMakespanModel
 from optimization.model_SCIP import MakespanMinimizationSCIP
+from optimization.dwave_hybrid_model import DWaveHybridMakespanModel
 from optimization.genetic_model import GeneticMakespanPlanner
 from utils import log_experiment # Importar función para guardar resultados
 
@@ -26,6 +27,7 @@ MODEL_MAPPING = {
     "Minimizar Makespan (Neal QUBO)": NealMakespanModel,
     "Minimizar Makespan (PySCIPOpt)": MakespanMinimizationSCIP,
     "Minimizar Makespan (Genético)": GeneticMakespanPlanner,
+    "Minimizar Makespan (D-Wave Hybrid)": DWaveHybridMakespanModel
 }
 
 # --- Constantes ---
