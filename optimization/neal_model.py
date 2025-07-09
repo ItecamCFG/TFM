@@ -41,6 +41,7 @@ class NealMakespanModel(OptimizationModel):
         max_day_val = self.days_list[-1] if self.days_list else 1
         
         self.variables = {}
+        x_vars = {}  # Variables de asignación de recursos a tareas
         y_expressions, y_vars_bits = {}, {}
         end_day_expressions, end_day_vars_bits = {}, {}
         work_day_vars = {} # Definimos work_day_vars aquí para que sea accesible en todo el método
@@ -48,6 +49,8 @@ class NealMakespanModel(OptimizationModel):
         bqm = dimod.BinaryQuadraticModel('BINARY')
 
         # --- 1. CREACIÓN DE VARIABLES Y EXPRESIONES ---
+        x_vars = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}") for p in self.project_names for t in self.tasks_per_project_name.get(p, []) for r in self.resource_names}
+
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
                 for d in self.days_list:
@@ -111,7 +114,7 @@ class NealMakespanModel(OptimizationModel):
                 for r in self.resource_names:
                     res_level = level_map.get(self.expertise_dict.get(r, "Junior"), 1)
                     if res_level < req_level:
-                        bqm.add_variable(f"x_{p}_{t}_{r}", P_EXPERTISE)
+                        bqm.update(P_EXPERTISE * x_vars[(p, t, r)])
 
         # 3. Link y-x
         print("DEBUG QUBO: Formulando P: link y-x (El Guardián)...")
@@ -280,6 +283,7 @@ class NealMakespanModel(OptimizationModel):
         #             bqm.add_interaction(wd_prev_label, wd_curr_label, {wd_next_label: -P_LOW})
 
         # --- Finalizar BQM ---
+
         self.model = bqm
         print(f"DEBUG QUBO: Modelo BQM final construido con {len(self.model.variables)} variables binarias.")
         return self.model
@@ -443,107 +447,45 @@ class NealMakespanModel(OptimizationModel):
         return final_status, runtime
     
     def _extract_results(self, status: str):
-        """
-        Extrae, decodifica, valida e interpreta los resultados del sampleset.
-        VERSIÓN COMPLETA Y DEPURABLE: Compatible con ambos modelos (simple y complejo).
-        """
         if not hasattr(self, 'sampleset') or self.sampleset is None or len(self.sampleset) == 0:
-            self.result = OptimizationResult(
-                status="No Solution Found",
-                solver_runtime=self.solver_runtime,
-                error_message="El solver no devolvió un sampleset."
-            )
+            self.result = OptimizationResult(status="No Solution Found", solver_runtime=self.solver_runtime)
             return
+        
 
-        try:
-            # --- 1. MODO DEPURACIÓN: INSPECCIONAR LAS MEJORES MUESTRAS ---
-            print("\n" + "="*20 + " INICIO ANÁLISIS DEL SAMPLESET " + "="*20)
+        print("\n" + "="*20 + " INICIO ANÁLISIS DEL SAMPLESET " + "="*20)
+        variables = self.sampleset.variables
+        num_muestras_a_ver = min(3, len(self.sampleset))
+        for i in range(num_muestras_a_ver):
+            sample_dict = dict(zip(variables, self.sampleset.record.sample[i]))
+            energy = self.sampleset.record.energy[i]
+            print(f"--- Muestra #{i+1} con Energía: {energy:.2f} ---")
+            activated_vars = {k: v for k, v in sample_dict.items() if v == 1}
+            print(f"    Variables activadas ({len(activated_vars)}): {sorted(list(activated_vars.keys()))}")
+        print("="*22 + " FIN ANÁLISIS DEL SAMPLESET " + "="*23 + "\n")
 
-            # .lowest() filtra el sampleset para quedarnos solo con las muestras de la energía más baja.
-            # .record itera sobre los registros de ese sub-conjunto.
-            for i, datum in enumerate(self.sampleset.lowest().record):
-                print(f"--- Muestra #{i+1} con Energía: {datum.energy:.2f} (Ocurrencias: {datum.num_occurrences}) ---")
-                
-                # El diccionario de la muestra está en datum.sample
-                activated_vars = {k: v for k, v in datum.sample.items() if v == 1}
-                
-                if not activated_vars:
-                    print("    (Ninguna variable activada en esta muestra)")
-                else:
-                    print(f"    Variables activadas ({len(activated_vars)}): {sorted(list(activated_vars.keys()))}")
+        best_sample = self.sampleset.first.sample
+        objective_val = self.sampleset.first.energy
 
-            print("="*22 + " FIN ANÁLISIS DEL SAMPLESET " + "="*23 + "\n")
+        assignment = {}
+        task_completion_days = {}
+        if 'y_bits' in self.variables:
+            for (p, t, r, d), bits_dict in self.variables['y_bits'].items():
+                hours_val = self._decode_integer_from_bits(best_sample, bits_dict)
+                if hours_val > 0.01:
+                    assignment[(p, t, r, d)] = hours_val
+        
+        validation_errors = self._validate_solution(assignment, task_completion_days)
+        
+        final_status = "INFEASIBLE" if validation_errors else "Feasible"
+        error_message = "\n".join(validation_errors) if validation_errors else None
+        
+        if error_message: print(f"ADVERTENCIA QUBO: La solución viola restricciones:\n{error_message}")
 
-            # --- 2. DECODIFICACIÓN DE LA MEJOR MUESTRA ---
-            best_sample = self.sampleset.first.sample
-            objective_val = self.sampleset.first.energy
-
-            makespan_val = 0
-            task_completion_days = {}
-            assignment = {}  # Para el modelo complejo: {(p,t,r,d): horas}
-
-            is_simple_model = any(k.startswith('z_') for k in best_sample.keys())
-
-            if is_simple_model:
-                print("DEBUG EXTRACT: Detectado resultado de MODELO SIMPLE.")
-                work_details_simple = {}
-                for p in self.project_names:
-                    for t in self.tasks_per_project_name.get(p, []):
-                        assigned_day = next((d for d in self.days_list if best_sample.get(f"z_{p}_{t}_{d}", 0) == 1), 0)
-                        assigned_resource = next((r for r in self.resource_names if best_sample.get(f"x_{p}_{t}_{r}", 0) == 1), None)
-                        if assigned_day > 0 and assigned_resource:
-                            work_details_simple[(p, t)] = (assigned_resource, assigned_day)
-                            task_completion_days[(p, t)] = assigned_day
-                
-                if task_completion_days:
-                    makespan_val = max(task_completion_days.values())
-
-            else: # Modelo Complejo
-                print("DEBUG EXTRACT: Detectado resultado de MODELO COMPLEJO.")
-                # Asegurarse de que 'self.variables' fue poblado en _build_model
-                if 'y_bits' in self.variables:
-                    for (p, t, r, d), bits_dict in self.variables['y_bits'].items():
-                        hours_val = self._decode_integer_from_bits(best_sample, bits_dict)
-                        if hours_val > 0.1:
-                            assignment[(p, t, r, d)] = hours_val
-                
-                if 'end_day_bits' in self.variables:
-                     for (p, t), bits_dict in self.variables.get('end_day_bits', {}).items():
-                        task_completion_days[(p,t)] = self._decode_integer_from_bits(best_sample, bits_dict)
-
-                if 'makespan_bits' in self.variables:
-                    makespan_val = self._decode_integer_from_bits(best_sample, self.variables['makespan_bits'])
-
-
-            # --- 3. VALIDACIÓN DE LA SOLUCIÓN DECODIFICADA ---
-            # Para el modelo simple, esperamos errores de horas. Es normal.
-            validation_errors = self._validate_solution(assignment, task_completion_days, is_simple_model)
-
-            # --- 4. DETERMINAR ESTADO FINAL Y PREPARAR RESULTADO ---
-            final_status = status
-            error_message = None
-            if validation_errors:
-                final_status = "INFEASIBLE"
-                error_message = "La solución de menor energía viola las restricciones:\n" + "\n".join(validation_errors)
-                print(f"ADVERTENCIA QUBO: {error_message}")
-            elif is_simple_model:
-                final_status = "Feasible (Simple Model)"
-
-            self.result = OptimizationResult(
-                status=final_status,
-                solver_runtime=self.solver_runtime,
-                objective_value=objective_val,
-                makespan=makespan_val,
-                assignment=assignment,
-                task_completion_days=task_completion_days,
-                error_message=error_message
-            )
-
-        except Exception as e:
-            import traceback
-            error_msg = f"Error crítico extrayendo/decodificando resultados: {e}\n{traceback.format_exc()}"
-            print(error_msg)
-            self.result = OptimizationResult(status="Error Extracting", error_message=error_msg, solver_runtime=self.solver_runtime)
+        self.result = OptimizationResult(
+            status=final_status, solver_runtime=self.solver_runtime,
+            objective_value=objective_val, assignment=assignment,
+            error_message=error_message
+        )
 
     def _decode_integer_from_bits(self, sample, bits_dict):
         """Función auxiliar para decodificar un entero a partir de sus bits."""

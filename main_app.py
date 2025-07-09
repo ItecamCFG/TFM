@@ -6,7 +6,7 @@ from data_manager import initialize_session_state, save_data, load_data, DATA_FI
 from ui_projects import display_project_management
 from ui_resources import display_resource_management
 from ui_planning import display_planning
-
+from ui_dwave import display_qubo_lab
 # --- Configuración de la Página ---
 st.set_page_config(
     page_title="Gestor de Proyectos ", # Nuevo título
@@ -70,10 +70,11 @@ with st.sidebar:
     st.caption("Recuerda guardar los cambios importantes.")
 
 # --- Área Principal con Pestañas ---
-tab1, tab2, tab3 = st.tabs([
+tab1, tab2, tab3, tab4 = st.tabs([
     " Proyectos y Tareas Secuenciales ",
     " Recursos y Disponibilidad ",
-    " Planificación Optimizada "
+    " Planificación Optimizada ",
+    "Laboratorio QUBO 🔬",
 ])
 
 with tab1:
@@ -84,6 +85,17 @@ with tab2:
 
 with tab3:
     display_planning()
+
+with tab4:
+    st.header("🔬 Laboratorio de Experimentos QUBO")
+    st.markdown("Este espacio está diseñado para ejecutar y depurar el `NealMakespanModel` de forma aislada.")
+    app_data = st.session_state.get('app_data', {})
+    if not app_data.get('tasks'):
+        st.warning("⚠️ Carga datos con proyectos, tareas y recursos para poder experimentar.")
+    else:
+        display_qubo_lab()
+
+
 
 # --- Pie de página o información adicional (Opcional) ---
 st.divider()
