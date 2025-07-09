@@ -250,7 +250,7 @@ Este proyecto se distribuye bajo la **MIT License**. Ver [LICENSE](LICENSE) para
 
 **Desarrollado por:**
 - **Itecam** - Centro Tecnológico Industrial de Castilla-La Mancha
-- **Email**: [transformacion.digital@itecam.com](mailto:transformacion.digital@itecam.com)
+- **Email**: [inteligencia.computacion@itecam.com](mailto:inteligencia.computacion@itecam.com)
 - **Web**: [www.itecam.com](https://www.itecam.com)
 
 **Colaboraciones académicas y empresariales bienvenidas.**

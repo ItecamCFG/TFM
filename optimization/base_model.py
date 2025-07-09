@@ -70,7 +70,7 @@ class OptimizationModel(ABC):
                 else:
                     print(f"ADVERTENCIA: Tarea duplicada por nombre '{task_name}' en proyecto '{proj_name}'. Se usará la primera encontrada.")
             else:
-                print(f"ADVERTENCIA: Tarea '{task_obj.name}' (ID: {task_obj.id}) tiene un project_id ('{task_obj.project_id}') no encontrado. Será ignorada.")
+                print(f"ADVERTENCIA: Tarea '{task_obj.name}' (ID: {task_obj.id_task}) tiene un project_id ('{task_obj.project_id}') no encontrado. Será ignorada.")
 
         # 3. Calcular Horizonte de Planificación (days_list)
         self.start_date = self.input_data.config.start_date
