@@ -28,546 +28,282 @@ class NealMakespanModel(OptimizationModel):
         self.variables = {}
         self.M_days_big_m = None
 
-    # def _build_model(self):
-    #     """
-    #     MODO DEPURACIÓN "CAPA 2": Asignación Única + Horas Totales.
-    #     """
-    #     print("DEBUG QUBO: Construyendo modelo en MODO CAPA 2 (Asignación + Horas)...")
-    #     bqm = dimod.BinaryQuadraticModel('BINARY')
+    # En optimization/neal_model.py, dentro de la clase NealMakespanModel
+
+    def _create_qubo_variables(self, m_daily, max_day_val):
+        """Inicializa y crea todas las variables y expresiones QUBO necesarias."""
+        print("DEBUG QUBO: Creando variables y expresiones...")
         
-    #     # --- 1. CREACIÓN DE VARIABLES (x e y) ---
-    #     x_vars = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}") 
-    #               for p in self.project_names 
-    #               for t in self.tasks_per_project_name.get(p, []) 
-    #               for r in self.resource_names}
+        x_vars = {}
+        y_expressions, y_vars_bits = {}, {}
+        end_day_expressions, end_day_vars_bits = {}, {}
+        work_day_vars = {}
         
-    #     y_expressions = {}
-    #     y_bits = {}
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             for r in self.resource_names:
-    #                 for d in self.days_list:
-    #                     # Usamos solo 1 bit para simplificar, puede valer 0 o 1 hora
-    #                     expr, bits = integer_to_binary(f"y_{p}_{t}_{r}_{d}", 1) 
-    #                     y_expressions[(p, t, r, d)] = expr
-    #                     y_bits[(p, t, r, d)] = bits
+        # 1. Variables de asignación (x)
+        x_vars = {
+            (p, t, r): dimod.Binary(f"x_{p}_{t}_{r}")
+            for p in self.project_names
+            for t in self.tasks_per_project_name.get(p, [])
+            for r in self.resource_names
+        }
 
-    #     self.variables['x'] = x_vars
-    #     self.variables['y_bits'] = y_bits
-
-    #     # --- 2. PENALIZACIONES ---
-    #     # En esta fase, P_ASSIGN debe ser más débil que P_HOURS_TOTAL
-    #     # para que el solver priorice cumplir las horas.
-    #     P_HOURS_TOTAL = 100.0
-    #     P_ASSIGN = 50.0
-    #     P_LINK_YX = 10.0 # Una penalización para el enlace lógico
-        
-    #     # --- 3. RESTRICCIONES ---
-
-    #     # Restricción 1: Asignación Única
-    #     print("DEBUG QUBO: Formulando P: asignación única...")
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             sum_x = dimod.quicksum(x_vars[(p, t, r)] for r in self.resource_names)
-    #             bqm.update(P_ASSIGN * (sum_x - 1)**2)
-
-    #     # Restricción 2: Link y-x (para que y solo active si x está asignado)
-    #     print("DEBUG QUBO: Formulando P: link y-x...")
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             for r in self.resource_names:
-    #                 x_var = x_vars[(p, t, r)]
-    #                 for d in self.days_list:
-    #                     for y_bit_var in y_bits[(p, t, r, d)].values():
-    #                         bqm.update(P_LINK_YX * (y_bit_var - y_bit_var * x_var))
-
-    #     # Restricción 3: Horas Totales
-    #     print("DEBUG QUBO: Formulando P: horas totales...")
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             H_pt = self.hours_required_dict.get((p, t), 0)
-    #             sum_y_total = dimod.quicksum(y_expressions[(p, t, r, d)] 
-    #                                          for r in self.resource_names 
-    #                                          for d in self.days_list)
-    #             bqm.update(P_HOURS_TOTAL * (sum_y_total - H_pt)**2)
-        
-    #     self.model = bqm
-    #     print(f"DEBUG QUBO: Modelo de CAPA 2 construido con {len(self.model.variables)} variables.")
-        
-
-
-    def _build_model(self):
-            """
-            MODO DEPURACIÓN "CAPA 3 REVISADA": Usando una formulación de secuencia más simple.
-            """
-            print("DEBUG QUBO: Construyendo modelo en MODO CAPA 3 (Secuencia Simplificada)...")
-            bqm = dimod.BinaryQuadraticModel('BINARY')
-            
-            # --- 1. PREPARACIÓN ---
-            level_map = {"Junior": 1, "Senior": 2, "Experto": 3}
-            M_daily = 8
-            
-            # --- 2. CREACIÓN DE VARIABLES ---
-            x_vars = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}") for p in self.project_names for t in self.tasks_per_project_name.get(p, []) for r in self.resource_names}
-            y_expressions, y_bits = {}, {}
-            work_day_vars = {}
-
-            for p in self.project_names:
-                for t in self.tasks_per_project_name.get(p, []):
-                    for d in self.days_list:
-                        work_day_vars[(p, t, d)] = dimod.Binary(f"WorkDay_{p}_{t}_{d}")
-                        for r in self.resource_names:
-                            expr, bits_y = integer_to_binary(f"y_{p}_{t}_{r}_{d}", M_daily)
-                            y_expressions[(p, t, r, d)] = expr
-                            y_bits[(p, t, r, d)] = bits_y
-            
-            self.variables = {'x': x_vars, 'y_bits': y_bits, 'work_day': work_day_vars}
-
-            # --- 3. PENALIZACIONES (Reajustadas para la nueva secuencia) ---
-            P_HOURS_TOTAL = 500.0 
-            P_AVAIL = 400.0
-            P_SEQ = 300.0 # <--- Rebajamos la penalización de secuencia al ser más simple
-            P_ASSIGN = 200.0
-            P_LINK = 50.0 # Para los enlaces lógicos
-            P_EXPERTISE = P_ASSIGN
-
-            # --- 4. RESTRICCIONES ---
-
-            # Capa 1 y 2 (Asignación, Horas, Disponibilidad)
-            print("DEBUG QUBO: Formulando P: Capas 1 y 2...")
-            for p in self.project_names:
-                for t in self.tasks_per_project_name.get(p, []):
-                    sum_x = dimod.quicksum(x_vars[(p, t, r)] for r in self.resource_names)
-                    bqm.update(P_ASSIGN * (sum_x - 1)**2)
-                    H_pt = self.hours_required_dict.get((p, t), 0)
-                    sum_y = dimod.quicksum(y_expressions[(p, t, r, d)] for r in self.resource_names for d in self.days_list)
-                    bqm.update(P_HOURS_TOTAL * (sum_y - H_pt)**2)
-                    for r in self.resource_names:
-                        if level_map.get(self.expertise_dict.get(r), 1) < level_map.get(self.expertise_required_dict.get((p,t)), 1):
-                            bqm.update(P_EXPERTISE * x_vars[(p, t, r)])
-                        x_var = x_vars[(p, t, r)]
-                        for d in self.days_list:
-                            for y_bit in y_bits[(p, t, r, d)].values():
-                                bqm.update(P_LINK * (y_bit - y_bit * x_var))
-            
-            for r in self.resource_names:
+        # 2. Variables de horas (y) y días de trabajo (WorkDay)
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
                 for d in self.days_list:
-                    A_rd = self.availability_numeric.get((r, d), 0)
-                    sum_y_rd = dimod.quicksum(y_expressions[(p, t, r, d)] for p in self.project_names for t in self.tasks_per_project_name.get(p,[]))
-                    slack, _ = integer_to_binary(f"slack_avail_{r}_{d}", M_daily * len(self.project_names))
-                    bqm.update(P_AVAIL * (sum_y_rd + slack - A_rd)**2)
-            
-            # Capa 3: Secuencialidad (Versión Simplificada)
-            print("DEBUG QUBO: Formulando P: Capa 3 (Secuencia Simplificada)...")
-            # Primero, enlazamos las horas (y) con los días de trabajo (WorkDay)
-            for p in self.project_names:
-                for t in self.tasks_per_project_name.get(p, []):
-                    for d in self.days_list:
-                        sum_y_ptd = dimod.quicksum(y_expressions[(p, t, r, d)] for r in self.resource_names)
-                        work_var = work_day_vars[(p, t, d)]
-                        # Si sum_y > 0, work_var debe ser 1. Y si work_var=1, sum_y debe ser >0.
-                        # Una forma de modelarlo es forzando a que sum_y y work_var sean "proporcionales".
-                        bqm.update(P_LINK * (sum_y_ptd - work_var)**2)
+                    work_day_vars[(p, t, d)] = dimod.Binary(f"WorkDay_{p}_{t}_{d}")
+                    for r in self.resource_names:
+                        expr, bits = integer_to_binary(f"y_{p}_{t}_{r}_{d}", m_daily)
+                        y_expressions[(p, t, r, d)] = expr
+                        y_vars_bits[(p, t, r, d)] = bits
 
-            # Ahora, aplicamos la restricción de secuencia sobre las variables WorkDay
-            for p_proj in self.project_names:
-                sorted_tasks = sorted(self.tasks_per_project_name[p_proj], key=lambda t: getattr(self.task_info.get((p_proj, t)), 'sequence', float('inf')))
-                for i in range(len(sorted_tasks) - 1):
-                    t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
-                    for d_suc in self.days_list:
-                        # Si la sucesora está activa en el día d_suc...
-                        w_suc = work_day_vars[(p_proj, t_i_plus_1, d_suc)]
-                        # ...penalizamos a la predecesora por estar activa en el mismo día o después.
-                        for d_pred in self.days_list:
-                            if d_pred >= d_suc:
-                                w_pred = work_day_vars[(p_proj, t_i, d_pred)]
-                                # La penalización se activa si ambas (w_pred y w_suc) son 1.
-                                bqm.update(P_SEQ * w_pred * w_suc)
-                                
-            self.model = bqm
-            print(f"DEBUG QUBO: Modelo BQM (Capa 3 Simplificada) construido con {len(self.model.variables)} variables.")
-
-    
-    # def _build_model(self):
-    #     """Construye el modelo QUBO (BQM) para minimizar el makespan."""
-    #     print("DEBUG QUBO: Construyendo modelo BQM...")
-        
-    #     # --- PREPARACIÓN DE CONSTANTES ---
-    #     level_map = {"Junior": 1, "Senior": 2, "Experto": 3}
-    #     M_daily = 8
-    #     max_day_val = self.days_list[-1] if self.days_list else 1
-        
-    #     self.variables = {}
-    #     x_vars = {}  # Variables de asignación de recursos a tareas
-    #     y_expressions, y_vars_bits = {}, {}
-    #     end_day_expressions, end_day_vars_bits = {}, {}
-    #     work_day_vars = {} # Definimos work_day_vars aquí para que sea accesible en todo el método
-        
-    #     bqm = dimod.BinaryQuadraticModel('BINARY')
-
-    #     # --- 1. CREACIÓN DE VARIABLES Y EXPRESIONES ---
-    #     x_vars = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}") for p in self.project_names for t in self.tasks_per_project_name.get(p, []) for r in self.resource_names}
-
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             for d in self.days_list:
-    #                 work_day_vars[(p,t,d)] = dimod.Binary(f"WorkDay_{p}_{t}_{d}")
-
-    #             for r in self.resource_names:
-    #                 for d in self.days_list:
-    #                     expr, bits = integer_to_binary(f"y_{p}_{t}_{r}_{d}", M_daily)
-    #                     y_expressions[(p, t, r, d)] = expr
-    #                     y_vars_bits[(p, t, r, d)] = bits
-        
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             expr, bits = integer_to_binary(f"EndDay_{p}_{t}", max_day_val)
-    #             end_day_expressions[(p, t)] = expr
-    #             end_day_vars_bits[(p,t)] = bits
-
-    #     makespan_expr, _ = integer_to_binary("Makespan", max_day_val)
-
-    #     self.variables['x'] = x_vars
-    #     self.variables['y_bits'] = y_vars_bits # Esta es la línea más importante
-    #     self.variables['end_day_bits'] = end_day_vars_bits
-    #     self.variables['work_day'] = work_day_vars
-            
-    #     # --- 2. COEFICIENTES DE PENALIZACIÓN (VERSIÓN REFORZADA) ---
-    #     P_BASE = max(1.0, float(max_day_val))
-    #     P_ABSOLUTE = 100.0 * P_BASE**2 # Nueva categoría máxima, para lo innegociable
-    #     P_CRITICAL = 50.0 * P_BASE**2 
-    #     P_HARD = 10.0 * P_BASE**2
-    #     P_MEDIUM = 5.0 * P_BASE
-    #     P_LOW = 1.0 * P_BASE 
-
-    #     # Asignación de penalizaciones
-    #     P_HOURS_TOTAL = P_ABSOLUTE   # Esta es la más importante ahora mismo!
-    #     P_SEQ = P_CRITICAL
-    #     P_AVAIL = P_CRITICAL
-    #     P_DEADLINE = P_CRITICAL
-    #     P_ASSIGN = P_CRITICAL
-    #     P_EXPERTISE = P_HARD
-    #     P_ENDDAY_DEF = P_HARD
-    #     P_MAKE_DEF = P_HARD
-    #     P_LINK_WD = P_HARD          # La nueva restricción y los enlaces lógicos
-    #     P_LINK_YX = P_MEDIUM
-
-    #     P_OBJECTIVE = P_HARD # Penalización por el objetivo de makespan
-
-    #     self.penalties = { 'P_CRITICAL': P_CRITICAL, 'P_HARD': P_HARD, 'P_MEDIUM': P_MEDIUM, 'P_LOW': P_LOW }
-            
-    #     # --- 3. OBJETIVO ---
-    #     bqm.update(P_OBJECTIVE * makespan_expr)
-
-    #     # --- 4. RESTRICCIONES ---
-
-    #      # 1. Asignación única (Implementación Robusta)
-    #     print("DEBUG QUBO: Formulando P: asignación única...")
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             # Creamos la expresión para la suma de asignaciones
-    #             sum_x = dimod.quicksum(x_vars[(p, t, r)] for r in self.resource_names)
-
-    #             # Aplicamos directamente la penalización cuadrática (sum(x) - 1)^2
-    #             bqm.update(P_ASSIGN * (sum_x - 1)**2)
-
-    #     # 2. Expertise
-    #     print("DEBUG QUBO: Formulando P: expertise...")
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             req_level = level_map.get(self.expertise_required_dict.get((p,t), "Junior"), 1)
-    #             for r in self.resource_names:
-    #                 res_level = level_map.get(self.expertise_dict.get(r, "Junior"), 1)
-    #                 if res_level < req_level:
-    #                     bqm.update(P_EXPERTISE * x_vars[(p, t, r)])
-
-    #     # 3. Link y-x
-    #     print("DEBUG QUBO: Formulando P: link y-x (El Guardián)...")
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             for r in self.resource_names:
-    #                 x_var_label = f"x_{p}_{t}_{r}"
-    #                 for d in self.days_list:
-    #                     y_expr = y_expressions[(p, t, r, d)]
-    #                     for y_bit_var, _ in y_expr.linear.items():
-    #                         bqm.add_variable(y_bit_var, P_LINK_YX)
-    #                         bqm.add_interaction(y_bit_var, x_var_label, -P_LINK_YX)
-
-    #     # 4. Horas Totales (El Contador)
-    #     print("DEBUG QUBO: Formulando P: horas totales (El Contador)...")
-    #     for p in self.project_names:
-    #         for t in self.tasks_per_project_name.get(p, []):
-    #             H_pt = self.hours_required_dict.get((p, t), 0)
-    #             terms = []
-    #             for r in self.resource_names:
-    #                 for d in self.days_list:
-    #                     y_expr = y_expressions[(p, t, r, d)]
-    #                     for var, coeff in y_expr.linear.items():
-    #                         terms.append((var, coeff))
-    #             bqm.add_linear_equality_constraint(terms=terms, lagrange_multiplier=P_HOURS_TOTAL, constant=-H_pt)
-
-    #     # 5. Disponibilidad del Recurso
-    #     print("DEBUG QUBO: Formulando P: disponibilidad...")
-    #     for r in self.resource_names:
-    #         for d in self.days_list:
-    #             A_rd = self.availability_numeric.get((r, d), 0)
-    #             terms = []
-    #             for p in self.project_names:
-    #                 for t in self.tasks_per_project_name.get(p, []):
-    #                     for var, coeff in y_expressions[(p, t, r, d)].linear.items():
-    #                         terms.append((var, coeff))
-    #             bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_AVAIL, ub=A_rd,label =f"Availability_{r}_{d}")
-
-    #     # # 6. Enlace y -> WorkDay
-    #     # print("DEBUG QUBO: Formulando P: link y-WorkDay...")
-    #     # for p in self.project_names:
-    #     #     for t in self.tasks_per_project_name.get(p, []):
-    #     #         for d in self.days_list:
-    #     #             work_var_label = f"WorkDay_{p}_{t}_{d}"
-    #     #             max_y_sum_daily = M_daily * len(self.resource_names)
-    #     #             terms = []
-    #     #             for r_loop in self.resource_names:
-    #     #                 for var, coeff in y_expressions[(p,t,r_loop,d)].linear.items():
-    #     #                     terms.append((var, coeff))
-    #     #             terms.append((work_var_label, -max_y_sum_daily))
-    #     #             bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_LINK_WD, ub=0,label = f"LinkYWorkDay_{p}_{t}_{d}")
-
-    #     # # 7. Definición EndDay
-    #     # print("DEBUG QUBO: Formulando P: definición EndDay...")
-    #     # for p in self.project_names:
-    #     #     for t in self.tasks_per_project_name.get(p, []):
-    #     #         end_expr_pt = end_day_expressions[(p,t)]
-    #     #         for d_loop in self.days_list:
-    #     #             work_var_label = f"WorkDay_{p}_{t}_{d_loop}"
-    #     #             terms = [(var, coeff) for var, coeff in end_expr_pt.linear.items()]
-    #     #             terms.append((work_var_label, -max_day_val - 10)) # Big-M
-    #     #             constraint_constant = max_day_val + 10 - d_loop
-    #     #             bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_ENDDAY_DEF, constant=constraint_constant, lb=0, label =f"EndDayDef_{p}_{t}_{d_loop}")
-        
-    #     # 8. Secuencialidad (Implementación Robusta)
-    #     print("DEBUG QUBO: Formulando P: secuencia (Finish-to-Start)...")
-    #     for p in self.project_names:
-    #         sorted_tasks = sorted(
-    #             self.tasks_per_project_name.get(p, []),
-    #             key=lambda t_name: getattr(self.task_info.get((p, t_name)), 'sequence', float('inf'))
-    #         )
-    #         for i in range(len(sorted_tasks) - 1):
-    #             t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
-                
-    #             # Día de finalización de la tarea predecesora
-    #             end_day_i = end_day_expressions[(p, t_i)]
-                
-    #             # El día de inicio de la sucesora es el primer día en que está activa
-    #             # Usamos una aproximación: sum(d*w_d) es una buena proxy del día de inicio
-    #             start_day_i_plus_1 = dimod.quicksum(d * work_day_vars[(p, t_i_plus_1, d)] for d in self.days_list)
-
-    #             # La restricción es: start_day(i+1) > end_day(i)  =>  start_day(i+1) - end_day(i) >= 1
-    #             # Lo formulamos como una igualdad con un slack:
-    #             # start_day(i+1) - end_day(i) - 1 - slack = 0
-                
-    #             # El slack puede tomar cualquier valor entre 0 y el horizonte temporal
-    #             slack, _ = integer_to_binary(f"slack_seq_{p}_{t_i}", max_day_val)
-
-    #             constraint_expr = start_day_i_plus_1 - end_day_i - 1 - slack
-                
-    #             # Usamos add_linear_equality_constraint que es robusto
-    #             bqm.add_linear_equality_constraint(
-    #                 [(var.label, coeff) for var, coeff in constraint_expr.linear.items()],
-    #                 lagrange_multiplier=P_SEQ,
-    #                 constant=constraint_expr.offset
-    #             )
-
-        # # 9. Deadline
-        # print("DEBUG QUBO: Formulando P: deadline...")
-        # for project_data in self.input_data.projects:
-        #     if project_data.deadline:
-        #         deadline_day_num = (project_data.deadline - self.start_date).days + 1
-        #         if 1 <= deadline_day_num <= max_day_val:
-        #             for t_task in self.tasks_per_project_name.get(project_data.name, []):
-        #                 terms = [(var, coeff) for var, coeff in end_day_expressions[(project_data.name, t_task)].linear.items()]
-        #                 bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_DEADLINE, ub=deadline_day_num,label = f"Deadline_{project_data.name}_{t_task}")
-
-        # # 10. Definición Makespan
-        # print("DEBUG QUBO: Formulando P: definición Makespan...")
-        # for p_proj in self.project_names:
-        #     for t_task in self.tasks_per_project_name.get(p_proj, []):
-        #         terms = []
-        #         for var, coeff in makespan_expr.linear.items(): terms.append((var, coeff))
-        #         for var, coeff in end_day_expressions[(p_proj, t_task)].linear.items(): terms.append((var, -coeff))
-        #         bqm.add_linear_inequality_constraint(terms=terms, lagrange_multiplier=P_MAKE_DEF, lb=0,label = f"MakeDef_{p_proj}_{t_task}")
-
-
-        # # --- NUEVA RESTRICCIÓN: FORZAR HORAS SI WORK_DAY ES 1 ---
-        # print("DEBUG QUBO: Formulando P: Forzar horas si work_day=1...")
-        # epsilon = 0.1 # Un valor pequeño pero mayor que cero
-        # for p in self.project_names:
-        #     for t in self.tasks_per_project_name.get(p, []):
-        #         for d in self.days_list:
-        #             work_var = work_day_vars[(p, t, d)]
-        #             sum_y_ptd = dimod.quicksum(y_expressions[(p, t, r, d)] for r in self.resource_names)
-                    
-        #             # La restricción es: sum_y_ptd >= epsilon * work_var
-        #             # La formulamos como: sum_y_ptd - epsilon * work_var >= 0
-                    
-        #             constraint_expr = sum_y_ptd - epsilon * work_var
-                    
-        #             # Usamos una penalización cuadrática para forzar que la expresión sea >= 0
-        #             # Esto se puede hacer añadiendo un slack: constraint_expr - slack = 0
-        #             # O, de forma más directa, penalizando si es negativo, lo cual es más complejo.
-        #             # Usemos add_linear_inequality_constraint, que lo hace por nosotros.
-                    
-        #             # Obtenemos los términos lineales de la expresión
-        #             linear_terms = list(constraint_expr.linear.items())
-                    
-        #             bqm.add_linear_inequality_constraint(
-        #                 terms=linear_terms,
-        #                 lagrange_multiplier=P_LINK_WD, # Reutilizamos una penalización HARD
-        #                 label=f"force_hours_if_active_{p}_{t}_{d}",
-        #                 lb=0, # Límite inferior de la desigualdad (>= 0)
-        #                 ub=M_daily * len(self.resource_names) # Límite superior (un valor grande)
-        #     )
-
-
-        # # 11. Límite de Horas Diarias por Tarea y Recurso
-        # print("DEBUG QUBO: Formulando P: Límite de horas diarias por tarea...")
-
-        # # CAMBIO: Itera sobre las claves (key) y los valores (y_expr) del diccionario
-        # for key, y_expr in y_expressions.items(): 
-            
-        #     terms = [(var, coeff) for var, coeff in y_expr.linear.items()]
-            
-        #     # CAMBIO: Usa la 'key' del diccionario para crear la etiqueta única.
-        #     # La clave 'key' será algo como, por ejemplo, "y_t1_r1_d1".
-        #     constraint_label = f"DailyHoursLimit_{key}" 
-            
-        #     bqm.add_linear_inequality_constraint(
-        #         terms=terms, 
-        #         lagrange_multiplier=P_HARD, 
-        #         ub=M_daily, 
-        #         label=constraint_label # <-- Pasa la etiqueta que acabas de crear
-        #     )
-
-
-        # # 12. (NUEVA) Penalización de Tareas No Contiguas
-        # print("DEBUG QUBO: Formulando P: Contigüidad de Tareas...")
-        # for p in self.project_names:
-        #     for t in self.tasks_per_project_name.get(p, []):
-        #         # Iteramos desde el segundo día hasta el penúltimo
-        #         for d in range(2, len(self.days_list)):
-        #             # El patrón a penalizar es: Work(d-1)=1, Work(d)=0, Work(d+1)=1
-        #             wd_prev_label = f"WorkDay_{p}_{t}_{d-1}"
-        #             wd_curr_label = f"WorkDay_{p}_{t}_{d}"
-        #             wd_next_label = f"WorkDay_{p}_{t}_{d+1}"
-                    
-        #             # Esto añade el término cúbico: P_LOW * wd_prev * (1-wd_curr) * wd_next
-        #             # Se expande a: P_LOW * (wd_prev*wd_next - wd_prev*wd_curr*wd_next)
-        #             bqm.add_interaction(wd_prev_label, wd_next_label, P_LOW)
-        #             bqm.add_interaction(wd_prev_label, wd_curr_label, {wd_next_label: -P_LOW})
-
-        # --- Finalizar BQM ---
-
-        # self.model = bqm
-        # print(f"DEBUG QUBO: Modelo BQM final construido con {len(self.model.variables)} variables binarias.")
-        # return self.model
-    
-    
-    def _build_model_simple(self):
-        """
-        Construye un BQM simplificado "Tarea-en-Día".
-        VERSIÓN FINAL CORREGIDA: Conecta la variable makespan a las tareas.
-        """
-        print("DEBUG QUBO: Construyendo modelo BQM SIMPLIFICADO (Tarea-en-Día)...")
-        bqm = dimod.BinaryQuadraticModel('BINARY')
-        
-        import itertools
-
-        # --- Variables Principales ---
-        z = {(p, t, d): dimod.Binary(f"z_{p}_{t}_{d}")
-            for p in self.project_names
-            for t in self.tasks_per_project_name.get(p, [])
-            for d in self.days_list}
-
-        x = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}")
-            for p in self.project_names
-            for t in self.tasks_per_project_name.get(p, [])
-            for r in self.resource_names}
-
-        makespan_expr, _ = integer_to_binary("Makespan", self.days_list[-1])
-
-        # --- Penalizaciones ---
-        P_CRITICAL = 100.0
-        P_HARD = 50.0
-        P_OBJECTIVE = 1.0
-
-        # --- Objetivo: Minimizar Makespan ---
-        bqm.update(P_OBJECTIVE * makespan_expr)
-
-        # --- Restricciones Simplificadas ---
-
-        # 1. Cada tarea se realiza exactamente en UN día
+        # 3. Variables de día de finalización (EndDay)
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
-                sum_z_pt = dimod.quicksum(z[(p, t, d)] for d in self.days_list)
-                bqm.update(P_CRITICAL * (sum_z_pt - 1)**2)
+                expr, bits = integer_to_binary(f"EndDay_{p}_{t}", max_day_val)
+                end_day_expressions[(p, t)] = expr
+                end_day_vars_bits[(p, t)] = bits
 
-        # 2. Cada tarea tiene exactamente UN recurso asignado
+        # 4. Variable de Makespan
+        makespan_expr, makespan_vars_bits = integer_to_binary("Makespan", max_day_val)
+        
+        # Guardar referencias en la instancia para uso posterior (ej. en _extract_results)
+        self.variables['x'] = x_vars
+        self.variables['y_bits'] = y_vars_bits
+        self.variables['y_expr'] = y_expressions # Guardamos también las expresiones
+        self.variables['end_day_bits'] = end_day_vars_bits
+        self.variables['end_day_expr'] = end_day_expressions
+        self.variables['work_day'] = work_day_vars
+        self.variables['makespan_bits'] = makespan_vars_bits
+        self.variables['makespan_expr'] = makespan_expr
+
+        print(f"DEBUG QUBO: {len(x_vars)} variables 'x' creadas.")
+        print(f"DEBUG QUBO: {sum(len(b) for b in y_vars_bits.values())} bits para 'y' creados.")
+        # ... otros prints de depuración si lo deseas ...
+
+        # Devolvemos las variables y expresiones para usarlas en _build_model
+        return x_vars, y_expressions, end_day_expressions, work_day_vars, makespan_expr
+
+    def _add_assignment_penalty(self, bqm, x_vars, P_ASSIGN):
+        """Añade la penalización para asegurar que cada tarea tenga una única asignación."""
+        print("DEBUG QUBO: Formulando P: asignación única...")
         for p in self.project_names:
             for t in self.tasks_per_project_name.get(p, []):
-                sum_x_pt = dimod.quicksum(x[(p, t, r)] for r in self.resource_names)
-                bqm.update(P_CRITICAL * (sum_x_pt - 1)**2)
-        
-        # 3. Disponibilidad: Un recurso no puede hacer más de UNA tarea por día
+                # Suma de las variables de asignación para una tarea específica
+                sum_x = dimod.quicksum(x_vars.get((p, t, r)) for r in self.resource_names)
+                
+                # La penalización (sum(x) - 1)^2 se minimiza cuando sum(x) es exactamente 1
+                bqm.update(P_ASSIGN * (sum_x - 1)**2)
+    def _add_expertise_penalty(self, bqm, x_vars, P_EXPERTISE):
+        """Añade la penalización para las asignaciones que no cumplen con el expertise."""
+        print("DEBUG QUBO: Formulando P: expertise...")
+        level_map = {"Junior": 1, "Senior": 2, "Experto": 3}
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                req_level = level_map.get(self.expertise_required_dict.get((p, t), "Junior"), 1)
+                for r in self.resource_names:
+                    res_level = level_map.get(self.expertise_dict.get(r, "Junior"), 1)
+                    if res_level < req_level:
+                        # Penaliza si x_ptr es 1 cuando el recurso no es apto
+                        bqm.update(P_EXPERTISE * x_vars.get((p, t, r)))
+    
+    def _add_link_yx_penalty(self, bqm, x_vars, y_expressions, P_LINK_YX):
+        """Añade la penalización para asegurar que y > 0 solo si x = 1."""
+        print("DEBUG QUBO: Formulando P: link y-x...")
+        for (p, t, r, d), y_expr in y_expressions.items():
+            
+            # --- CORRECCIÓN CLAVE ---
+            # Construimos la etiqueta de la variable 'x' como un string.
+            # Esto es mucho más seguro que acceder al objeto y su propiedad .label.
+            x_var_label = f"x_{p}_{t}_{r}"
+            
+            # Por cada bit de 'y', aplicamos la penalización y_bit * (1 - x)
+            for y_bit_var in y_expr.linear.keys():
+                # Pasamos la etiqueta (string) de cada variable a las funciones del BQM.
+                # y_bit_var.label obtiene correctamente el nombre del bit de y.
+                bqm.add_interaction(y_bit_var.label, x_var_label, -P_LINK_YX)
+                bqm.add_variable(y_bit_var.label, P_LINK_YX)
+
+    def _add_total_hours_penalty(self, bqm, y_expressions, P_HOURS_TOTAL):
+        """Añade la penalización para asegurar que se cumplan las horas requeridas por tarea."""
+        print("DEBUG QUBO: Formulando P: horas totales...")
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                H_pt = self.hours_required_dict.get((p, t), 0)
+                
+                # Recolecta todos los términos (variable, coeficiente) para la suma de horas
+                terms = [
+                    (var, coeff)
+                    for r in self.resource_names
+                    for d in self.days_list
+                    for var, coeff in y_expressions.get((p, t, r, d), dimod.Binary(0)).linear.items()
+                ]
+                
+                # La restricción es: sum(y_terms) - H_pt = 0
+                bqm.add_linear_equality_constraint(
+                    terms=terms,
+                    lagrange_multiplier=P_HOURS_TOTAL,
+                    constant=-H_pt
+                )
+
+    def _add_availability_penalty(self, bqm, y_expressions, P_AVAIL):
+        """Añade la penalización para no exceder la disponibilidad diaria de los recursos."""
+        print("DEBUG QUBO: Formulando P: disponibilidad...")
         for r in self.resource_names:
             for d in self.days_list:
-                q_ancillas_rd = []
-                for p in self.project_names:
-                    for t in self.tasks_per_project_name.get(p, []):
-                        q_var = dimod.Binary(f"q_ancilla_{r}_{p}_{t}_{d}")
-                        q_ancillas_rd.append(q_var)
-                        z_var = z[(p, t, d)]
-                        x_var = x[(p, t, r)]
-                        bqm.update(P_HARD * (3 * q_var + z_var * x_var - 2 * q_var * z_var - 2 * q_var * x_var))
-                for q_pair in itertools.combinations(q_ancillas_rd, 2):
-                    bqm.update(P_CRITICAL * q_pair[0] * q_pair[1])
+                A_rd = self.availability_numeric.get((r, d), 0)
+                
+                # Suma de horas para un recurso en un día específico
+                terms = [
+                    (var, coeff)
+                    for p in self.project_names
+                    for t in self.tasks_per_project_name.get(p, [])
+                    for var, coeff in y_expressions.get((p, t, r, d), dimod.Binary(0)).linear.items()
+                ]
+                
+                # La restricción es: sum(y_terms) <= A_rd
+                bqm.add_linear_inequality_constraint(
+                    terms=terms,
+                    lagrange_multiplier=P_AVAIL,
+                    ub=A_rd,
+                    label=f"Availability_{r}_{d}"
+                )
 
-        # 4. Secuencialidad: end_day(t_i) < end_day(t_i+1)
+    def _add_logical_links_penalties(self, bqm, y_expressions, work_day_vars, end_day_expressions, 
+                                 P_LINK_WD, P_ENDDAY_DEF, M_daily, max_day_val):
+        """Añade las penalizaciones que enlazan y, WorkDay y EndDay."""
+        print("DEBUG QUBO: Formulando P: Enlaces lógicos (y, WorkDay, EndDay)...")
+        
+        epsilon = 0.1 # Cantidad mínima de horas si un día está activo
+
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                end_expr_pt = end_day_expressions.get((p, t))
+                
+                for d in self.days_list:
+                    work_var = work_day_vars.get((p, t, d))
+                    sum_y_ptd = dimod.quicksum(y_expressions.get((p, t, r, d), 0) for r in self.resource_names)
+
+                    # --- Enlace y -> WorkDay ---
+                    # Lógica: sum(y) <= M * WorkDay  =>  sum(y) - M*WorkDay <= 0
+                    big_m_hours = M_daily * len(self.resource_names)
+                    link_y_wd_expr = sum_y_ptd - big_m_hours * work_var
+                    bqm.add_linear_inequality_constraint(
+                        terms=list(link_y_wd_expr.linear.items()),
+                        lagrange_multiplier=P_LINK_WD, ub=0, label=f"Link_y_wd_{p}_{t}_{d}"
+                    )
+                    
+                    # --- Forzar horas si WorkDay = 1 ---
+                    # Lógica: sum(y) >= epsilon * WorkDay => sum(y) - epsilon * WorkDay >= 0
+                    force_hours_expr = sum_y_ptd - epsilon * work_var
+                    bqm.add_linear_inequality_constraint(
+                        terms=list(force_hours_expr.linear.items()),
+                        lagrange_multiplier=P_LINK_WD, lb=0, label=f"Force_hours_{p}_{t}_{d}"
+                    )
+
+                    # --- Definición EndDay ---
+                    # Lógica: EndDay >= d si WorkDay=1  => EndDay >= d - M*(1-WorkDay)
+                    big_m_days = max_day_val + 10
+                    endday_def_expr = end_expr_pt + big_m_days * work_var
+                    bqm.add_linear_inequality_constraint(
+                        terms=list(endday_def_expr.linear.items()),
+                        lagrange_multiplier=P_ENDDAY_DEF, constant=-(big_m_days - d), lb=0,
+                        label=f"EndDay_def_{p}_{t}_{d}"
+                    )
+
+    def _add_temporal_penalties(self, bqm, end_day_expressions, work_day_vars, makespan_expr, 
+                                P_SEQ, P_DEADLINE, P_MAKE_DEF, max_day_val):
+        """Añade las penalizaciones de secuencialidad, deadlines y definición de makespan."""
+        
+        big_m_days = max_day_val + 10
+
+        # --- Secuencialidad (Finish-to-Start) ---
+        print("DEBUG QUBO: Formulando P: secuencia (Finish-to-Start)...")
         for p in self.project_names:
             sorted_tasks = sorted(
-                self.tasks_per_project_name[p],
-                key=lambda t: getattr(self.task_info.get((p, t)), 'sequence', float('inf'))
+                self.tasks_per_project_name.get(p, []),
+                key=lambda t_name: getattr(self.task_info.get((p, t_name)), 'sequence', float('inf'))
             )
             for i in range(len(sorted_tasks) - 1):
                 t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
-                end_day_ti = dimod.quicksum(d * z[(p, t_i, d)] for d in self.days_list)
-                end_day_ti_plus_1 = dimod.quicksum(d * z[(p, t_i_plus_1, d)] for d in self.days_list)
+                end_day_i_expr = end_day_expressions.get((p, t_i))
                 
-                max_diff = self.days_list[-1]
-                slack_seq, _ = integer_to_binary(f"slack_seq_{p}_{t_i}", max_diff, prefix="seq_")
-                
-                constraint_seq = end_day_ti - end_day_ti_plus_1 + 1 + slack_seq
-                bqm.update(P_CRITICAL * (constraint_seq)**2)
+                for d in self.days_list:
+                    if d > 1:
+                        # Lógica: end_day(i) <= (d-1) + M*(1 - work_day(i+1, d))
+                        # Reordenando: end_day(i) + M*work_day(i+1, d) - (d-1+M) <= 0
+                        work_day_next_var = work_day_vars.get((p, t_i_plus_1, d))
+                        seq_expr = end_day_i_expr + big_m_days * work_day_next_var
+                        bqm.add_linear_inequality_constraint(
+                            terms=list(seq_expr.linear.items()),
+                            lagrange_multiplier=P_SEQ, constant=-(d - 1 + big_m_days),
+                            ub=0, label=f"Seq_{p}_{t_i}_{t_i_plus_1}_{d}"
+                        )
+
+        # --- Deadline ---
+        print("DEBUG QUBO: Formulando P: deadline...")
+        for proj in self.input_data.projects:
+            if proj.deadline:
+                deadline_day = (proj.deadline - self.start_date).days + 1
+                if 1 <= deadline_day <= max_day_val:
+                    for t in self.tasks_per_project_name.get(proj.name, []):
+                        end_expr = end_day_expressions.get((proj.name, t))
+                        bqm.add_linear_inequality_constraint(
+                            terms=list(end_expr.linear.items()),
+                            lagrange_multiplier=P_DEADLINE, ub=deadline_day, label=f"Deadline_{proj.name}_{t}"
+                        )
+                            
+        # --- Definición de Makespan ---
+        print("DEBUG QUBO: Formulando P: definición Makespan...")
+        for (p, t), end_expr in end_day_expressions.items():
+            # Lógica: Makespan >= EndDay_pt  =>  Makespan - EndDay_pt >= 0
+            makespan_def_expr = makespan_expr - end_expr
+            bqm.add_linear_inequality_constraint(
+                terms=list(makespan_def_expr.linear.items()),
+                lagrange_multiplier=P_MAKE_DEF, lb=0, label=f"Makespan_def_{p}_{t}"
+            )
+
+    # Reemplaza tu _build_model actual con este en optimization/neal_model.py
+
+    def _build_model(self):
+        """Construye el modelo QUBO (BQM) para minimizar el makespan."""
+        print("DEBUG QUBO: Construyendo modelo BQM...")
         
-        # ---------------------------------------------------------------------------------
-        # --- ¡AQUÍ ESTÁ LA NUEVA RESTRICCIÓN CLAVE! ---
-        # 5. Definición del Makespan
-        for p in self.project_names:
-            for t in self.tasks_per_project_name.get(p, []):
-                # El día de finalización de la tarea 't' es la suma ponderada de las z
-                end_day_t = dimod.quicksum(d * z[(p, t, d)] for d in self.days_list)
-                
-                # La restricción es: makespan_expr >= end_day_t
-                # que se reescribe como: makespan_expr - end_day_t >= 0
-                # Modelamos esto con un slack: makespan_expr - end_day_t - slack = 0
-                
-                max_val = self.days_list[-1]
-                slack_makespan, _ = integer_to_binary(f"slack_makespan_{p}_{t}", max_val, prefix="mk_")
-                
-                constraint = makespan_expr - end_day_t - slack_makespan
-                bqm.update(P_CRITICAL * (constraint)**2)
-        # ---------------------------------------------------------------------------------
-                
+        M_daily = 8
+        max_day_val = self.days_list[-1] if self.days_list else 1
+        
+        x_vars, y_expressions, end_day_expressions, work_day_vars, makespan_expr = \
+            self._create_qubo_variables(M_daily, max_day_val)
+
+        P_BASE = max(1.0, float(max_day_val))
+        P_ABSOLUTE = 100.0 * P_BASE**2
+        P_CRITICAL = 50.0 * P_BASE**2 
+        P_HARD = 10.0 * P_BASE**2
+        P_MEDIUM = 5.0 * P_BASE
+        P_LOW = 1.0 * P_BASE
+        P_OBJECTIVE = P_LOW
+
+        P_HOURS_TOTAL, P_ASSIGN, P_SEQ, P_AVAIL, P_DEADLINE = [P_ABSOLUTE] * 5
+        P_EXPERTISE, P_ENDDAY_DEF, P_MAKE_DEF, P_LINK_WD = [P_CRITICAL] * 4
+        P_LINK_YX = P_HARD
+        
+        bqm = dimod.BinaryQuadraticModel('BINARY')
+        bqm.update(P_OBJECTIVE * makespan_expr)
+        
+        self._add_assignment_penalty(bqm, x_vars, P_ASSIGN)
+        self._add_expertise_penalty(bqm, x_vars, P_EXPERTISE)
+        self._add_link_yx_penalty(bqm, x_vars, y_expressions, P_LINK_YX)
+        self._add_total_hours_penalty(bqm, y_expressions, P_HOURS_TOTAL)
+        self._add_availability_penalty(bqm, y_expressions, P_AVAIL)
+        
+        self._add_logical_links_penalties(bqm, y_expressions, work_day_vars, end_day_expressions, P_LINK_WD, P_ENDDAY_DEF, M_daily, max_day_val)
+        self._add_temporal_penalties(bqm, end_day_expressions, work_day_vars, makespan_expr, P_SEQ, P_DEADLINE, P_MAKE_DEF, max_day_val)
+
         self.model = bqm
-        print(f"DEBUG QUBO: Modelo SIMPLIFICADO construido con {len(self.model.variables)} variables.")
+        print(f"DEBUG QUBO: Modelo BQM final construido con {len(self.model.variables)} variables binarias.")
+    
+    
+
 
     
 
@@ -798,3 +534,259 @@ class NealMakespanModel(OptimizationModel):
         
         print(f"--- Modelo Finalizado: {self.__class__.__name__} --- Estado Final del Resultado: {self.result.status} ---")
         return self.result
+    
+    def _build_model_simple(self):
+        """
+        Construye un BQM simplificado "Tarea-en-Día".
+        VERSIÓN FINAL CORREGIDA: Conecta la variable makespan a las tareas.
+        """
+        print("DEBUG QUBO: Construyendo modelo BQM SIMPLIFICADO (Tarea-en-Día)...")
+        bqm = dimod.BinaryQuadraticModel('BINARY')
+        
+        import itertools
+
+        # --- Variables Principales ---
+        z = {(p, t, d): dimod.Binary(f"z_{p}_{t}_{d}")
+            for p in self.project_names
+            for t in self.tasks_per_project_name.get(p, [])
+            for d in self.days_list}
+
+        x = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}")
+            for p in self.project_names
+            for t in self.tasks_per_project_name.get(p, [])
+            for r in self.resource_names}
+
+        makespan_expr, _ = integer_to_binary("Makespan", self.days_list[-1])
+
+        # --- Penalizaciones ---
+        P_CRITICAL = 100.0
+        P_HARD = 50.0
+        P_OBJECTIVE = 1.0
+
+        # --- Objetivo: Minimizar Makespan ---
+        bqm.update(P_OBJECTIVE * makespan_expr)
+
+        # --- Restricciones Simplificadas ---
+
+        # 1. Cada tarea se realiza exactamente en UN día
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                sum_z_pt = dimod.quicksum(z[(p, t, d)] for d in self.days_list)
+                bqm.update(P_CRITICAL * (sum_z_pt - 1)**2)
+
+        # 2. Cada tarea tiene exactamente UN recurso asignado
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                sum_x_pt = dimod.quicksum(x[(p, t, r)] for r in self.resource_names)
+                bqm.update(P_CRITICAL * (sum_x_pt - 1)**2)
+        
+        # 3. Disponibilidad: Un recurso no puede hacer más de UNA tarea por día
+        for r in self.resource_names:
+            for d in self.days_list:
+                q_ancillas_rd = []
+                for p in self.project_names:
+                    for t in self.tasks_per_project_name.get(p, []):
+                        q_var = dimod.Binary(f"q_ancilla_{r}_{p}_{t}_{d}")
+                        q_ancillas_rd.append(q_var)
+                        z_var = z[(p, t, d)]
+                        x_var = x[(p, t, r)]
+                        bqm.update(P_HARD * (3 * q_var + z_var * x_var - 2 * q_var * z_var - 2 * q_var * x_var))
+                for q_pair in itertools.combinations(q_ancillas_rd, 2):
+                    bqm.update(P_CRITICAL * q_pair[0] * q_pair[1])
+
+        # 4. Secuencialidad: end_day(t_i) < end_day(t_i+1)
+        for p in self.project_names:
+            sorted_tasks = sorted(
+                self.tasks_per_project_name[p],
+                key=lambda t: getattr(self.task_info.get((p, t)), 'sequence', float('inf'))
+            )
+            for i in range(len(sorted_tasks) - 1):
+                t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
+                end_day_ti = dimod.quicksum(d * z[(p, t_i, d)] for d in self.days_list)
+                end_day_ti_plus_1 = dimod.quicksum(d * z[(p, t_i_plus_1, d)] for d in self.days_list)
+                
+                max_diff = self.days_list[-1]
+                slack_seq, _ = integer_to_binary(f"slack_seq_{p}_{t_i}", max_diff, prefix="seq_")
+                
+                constraint_seq = end_day_ti - end_day_ti_plus_1 + 1 + slack_seq
+                bqm.update(P_CRITICAL * (constraint_seq)**2)
+        
+        # ---------------------------------------------------------------------------------
+        # --- ¡AQUÍ ESTÁ LA NUEVA RESTRICCIÓN CLAVE! ---
+        # 5. Definición del Makespan
+        for p in self.project_names:
+            for t in self.tasks_per_project_name.get(p, []):
+                # El día de finalización de la tarea 't' es la suma ponderada de las z
+                end_day_t = dimod.quicksum(d * z[(p, t, d)] for d in self.days_list)
+                
+                # La restricción es: makespan_expr >= end_day_t
+                # que se reescribe como: makespan_expr - end_day_t >= 0
+                # Modelamos esto con un slack: makespan_expr - end_day_t - slack = 0
+                
+                max_val = self.days_list[-1]
+                slack_makespan, _ = integer_to_binary(f"slack_makespan_{p}_{t}", max_val, prefix="mk_")
+                
+                constraint = makespan_expr - end_day_t - slack_makespan
+                bqm.update(P_CRITICAL * (constraint)**2)
+        # ---------------------------------------------------------------------------------
+                
+        self.model = bqm
+        print(f"DEBUG QUBO: Modelo SIMPLIFICADO construido con {len(self.model.variables)} variables.")
+
+    
+     # def _build_model(self):
+    #     """
+    #     MODO DEPURACIÓN "CAPA 2": Asignación Única + Horas Totales.
+    #     """
+    #     print("DEBUG QUBO: Construyendo modelo en MODO CAPA 2 (Asignación + Horas)...")
+    #     bqm = dimod.BinaryQuadraticModel('BINARY')
+        
+    #     # --- 1. CREACIÓN DE VARIABLES (x e y) ---
+    #     x_vars = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}") 
+    #               for p in self.project_names 
+    #               for t in self.tasks_per_project_name.get(p, []) 
+    #               for r in self.resource_names}
+        
+    #     y_expressions = {}
+    #     y_bits = {}
+    #     for p in self.project_names:
+    #         for t in self.tasks_per_project_name.get(p, []):
+    #             for r in self.resource_names:
+    #                 for d in self.days_list:
+    #                     # Usamos solo 1 bit para simplificar, puede valer 0 o 1 hora
+    #                     expr, bits = integer_to_binary(f"y_{p}_{t}_{r}_{d}", 1) 
+    #                     y_expressions[(p, t, r, d)] = expr
+    #                     y_bits[(p, t, r, d)] = bits
+
+    #     self.variables['x'] = x_vars
+    #     self.variables['y_bits'] = y_bits
+
+    #     # --- 2. PENALIZACIONES ---
+    #     # En esta fase, P_ASSIGN debe ser más débil que P_HOURS_TOTAL
+    #     # para que el solver priorice cumplir las horas.
+    #     P_HOURS_TOTAL = 100.0
+    #     P_ASSIGN = 50.0
+    #     P_LINK_YX = 10.0 # Una penalización para el enlace lógico
+        
+    #     # --- 3. RESTRICCIONES ---
+
+    #     # Restricción 1: Asignación Única
+    #     print("DEBUG QUBO: Formulando P: asignación única...")
+    #     for p in self.project_names:
+    #         for t in self.tasks_per_project_name.get(p, []):
+    #             sum_x = dimod.quicksum(x_vars[(p, t, r)] for r in self.resource_names)
+    #             bqm.update(P_ASSIGN * (sum_x - 1)**2)
+
+    #     # Restricción 2: Link y-x (para que y solo active si x está asignado)
+    #     print("DEBUG QUBO: Formulando P: link y-x...")
+    #     for p in self.project_names:
+    #         for t in self.tasks_per_project_name.get(p, []):
+    #             for r in self.resource_names:
+    #                 x_var = x_vars[(p, t, r)]
+    #                 for d in self.days_list:
+    #                     for y_bit_var in y_bits[(p, t, r, d)].values():
+    #                         bqm.update(P_LINK_YX * (y_bit_var - y_bit_var * x_var))
+
+    #     # Restricción 3: Horas Totales
+    #     print("DEBUG QUBO: Formulando P: horas totales...")
+    #     for p in self.project_names:
+    #         for t in self.tasks_per_project_name.get(p, []):
+    #             H_pt = self.hours_required_dict.get((p, t), 0)
+    #             sum_y_total = dimod.quicksum(y_expressions[(p, t, r, d)] 
+    #                                          for r in self.resource_names 
+    #                                          for d in self.days_list)
+    #             bqm.update(P_HOURS_TOTAL * (sum_y_total - H_pt)**2)
+        
+    #     self.model = bqm
+    #     print(f"DEBUG QUBO: Modelo de CAPA 2 construido con {len(self.model.variables)} variables.")
+
+    # def _build_model(self):
+    #         """
+    #         MODO DEPURACIÓN "CAPA 3 REVISADA": Usando una formulación de secuencia más simple.
+    #         """
+    #         print("DEBUG QUBO: Construyendo modelo en MODO CAPA 3 (Secuencia Simplificada)...")
+    #         bqm = dimod.BinaryQuadraticModel('BINARY')
+            
+    #         # --- 1. PREPARACIÓN ---
+    #         level_map = {"Junior": 1, "Senior": 2, "Experto": 3}
+    #         M_daily = 8
+            
+    #         # --- 2. CREACIÓN DE VARIABLES ---
+    #         x_vars = {(p, t, r): dimod.Binary(f"x_{p}_{t}_{r}") for p in self.project_names for t in self.tasks_per_project_name.get(p, []) for r in self.resource_names}
+    #         y_expressions, y_bits = {}, {}
+    #         work_day_vars = {}
+
+    #         for p in self.project_names:
+    #             for t in self.tasks_per_project_name.get(p, []):
+    #                 for d in self.days_list:
+    #                     work_day_vars[(p, t, d)] = dimod.Binary(f"WorkDay_{p}_{t}_{d}")
+    #                     for r in self.resource_names:
+    #                         expr, bits_y = integer_to_binary(f"y_{p}_{t}_{r}_{d}", M_daily)
+    #                         y_expressions[(p, t, r, d)] = expr
+    #                         y_bits[(p, t, r, d)] = bits_y
+            
+    #         self.variables = {'x': x_vars, 'y_bits': y_bits, 'work_day': work_day_vars}
+
+    #         # --- 3. PENALIZACIONES (Reajustadas para la nueva secuencia) ---
+    #         P_HOURS_TOTAL = 500.0 
+    #         P_AVAIL = 400.0
+    #         P_SEQ = 300.0 # <--- Rebajamos la penalización de secuencia al ser más simple
+    #         P_ASSIGN = 200.0
+    #         P_LINK = 50.0 # Para los enlaces lógicos
+    #         P_EXPERTISE = P_ASSIGN
+
+    #         # --- 4. RESTRICCIONES ---
+
+    #         # Capa 1 y 2 (Asignación, Horas, Disponibilidad)
+    #         print("DEBUG QUBO: Formulando P: Capas 1 y 2...")
+    #         for p in self.project_names:
+    #             for t in self.tasks_per_project_name.get(p, []):
+    #                 sum_x = dimod.quicksum(x_vars[(p, t, r)] for r in self.resource_names)
+    #                 bqm.update(P_ASSIGN * (sum_x - 1)**2)
+    #                 H_pt = self.hours_required_dict.get((p, t), 0)
+    #                 sum_y = dimod.quicksum(y_expressions[(p, t, r, d)] for r in self.resource_names for d in self.days_list)
+    #                 bqm.update(P_HOURS_TOTAL * (sum_y - H_pt)**2)
+    #                 for r in self.resource_names:
+    #                     if level_map.get(self.expertise_dict.get(r), 1) < level_map.get(self.expertise_required_dict.get((p,t)), 1):
+    #                         bqm.update(P_EXPERTISE * x_vars[(p, t, r)])
+    #                     x_var = x_vars[(p, t, r)]
+    #                     for d in self.days_list:
+    #                         for y_bit in y_bits[(p, t, r, d)].values():
+    #                             bqm.update(P_LINK * (y_bit - y_bit * x_var))
+            
+    #         for r in self.resource_names:
+    #             for d in self.days_list:
+    #                 A_rd = self.availability_numeric.get((r, d), 0)
+    #                 sum_y_rd = dimod.quicksum(y_expressions[(p, t, r, d)] for p in self.project_names for t in self.tasks_per_project_name.get(p,[]))
+    #                 slack, _ = integer_to_binary(f"slack_avail_{r}_{d}", M_daily * len(self.project_names))
+    #                 bqm.update(P_AVAIL * (sum_y_rd + slack - A_rd)**2)
+            
+    #         # Capa 3: Secuencialidad (Versión Simplificada)
+    #         print("DEBUG QUBO: Formulando P: Capa 3 (Secuencia Simplificada)...")
+    #         # Primero, enlazamos las horas (y) con los días de trabajo (WorkDay)
+    #         for p in self.project_names:
+    #             for t in self.tasks_per_project_name.get(p, []):
+    #                 for d in self.days_list:
+    #                     sum_y_ptd = dimod.quicksum(y_expressions[(p, t, r, d)] for r in self.resource_names)
+    #                     work_var = work_day_vars[(p, t, d)]
+    #                     # Si sum_y > 0, work_var debe ser 1. Y si work_var=1, sum_y debe ser >0.
+    #                     # Una forma de modelarlo es forzando a que sum_y y work_var sean "proporcionales".
+    #                     bqm.update(P_LINK * (sum_y_ptd - work_var)**2)
+
+    #         # Ahora, aplicamos la restricción de secuencia sobre las variables WorkDay
+    #         for p_proj in self.project_names:
+    #             sorted_tasks = sorted(self.tasks_per_project_name[p_proj], key=lambda t: getattr(self.task_info.get((p_proj, t)), 'sequence', float('inf')))
+    #             for i in range(len(sorted_tasks) - 1):
+    #                 t_i, t_i_plus_1 = sorted_tasks[i], sorted_tasks[i+1]
+    #                 for d_suc in self.days_list:
+    #                     # Si la sucesora está activa en el día d_suc...
+    #                     w_suc = work_day_vars[(p_proj, t_i_plus_1, d_suc)]
+    #                     # ...penalizamos a la predecesora por estar activa en el mismo día o después.
+    #                     for d_pred in self.days_list:
+    #                         if d_pred >= d_suc:
+    #                             w_pred = work_day_vars[(p_proj, t_i, d_pred)]
+    #                             # La penalización se activa si ambas (w_pred y w_suc) son 1.
+    #                             bqm.update(P_SEQ * w_pred * w_suc)
+                                
+    #         self.model = bqm
+    #         print(f"DEBUG QUBO: Modelo BQM (Capa 3 Simplificada) construido con {len(self.model.variables)} variables.")

@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from optimization.data_models import OptimizationInput, OptimizationResult # Ajusta la ruta si es necesario
 import time
 from datetime import date, timedelta # Importar date
+import traceback
 
 # Definir los nombres de los días laborables que usa tu aplicación
 # Esto debería ser consistente con cómo se almacenan en Resource.availability
@@ -177,7 +178,6 @@ class OptimizationModel(ABC):
             # El estado final del objeto self.result se establece dentro de _extract_results
 
         except ValueError as ve: # Capturar errores de validación de datos o preparación
-            import traceback
             error_msg = f"Error de Valor/Datos: {ve}\n{traceback.format_exc()}"
             print(f"ERROR durante la optimización: {error_msg}")
             self.result = OptimizationResult(
@@ -186,7 +186,7 @@ class OptimizationModel(ABC):
                 error_message=error_msg
             )
         except Exception as e:
-            import traceback
+
             error_msg = f"Error Inesperado: {e}\n{traceback.format_exc()}"
             print(f"ERROR durante la optimización: {error_msg}")
             self.result = OptimizationResult(
